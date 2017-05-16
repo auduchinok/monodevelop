@@ -26,24 +26,20 @@
 //
 
 using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Xml;
 using System.Threading;
-using MonoDevelop.Core;
-using MonoDevelop.Core.Execution;
-using MonoDevelop.Projects.Policies;
-using MonoDevelop.Projects.MD1;
-using MonoDevelop.Projects.Extensions;
-using MonoDevelop.Projects.MSBuild;
-using MonoDevelop.Core.Assemblies;
-using System.Globalization;
 using System.Threading.Tasks;
-using System.Collections.Immutable;
-using MonoDevelop.Projects.MSBuild.Conditions;
+using System.Xml;
+using MonoDevelop.Core;
+using MonoDevelop.Core.Assemblies;
+using MonoDevelop.Core.Execution;
+using MonoDevelop.Projects.MSBuild;
+using MonoDevelop.Projects.Policies;
 
 namespace MonoDevelop.Projects
 {
@@ -825,20 +821,18 @@ namespace MonoDevelop.Projects
 
 		protected override IEnumerable<SolutionItem> OnGetReferencedItems (ConfigurationSelector configuration)
 		{
-			var items = new List<SolutionItem> (base.OnGetReferencedItems (configuration));
-			if (ParentSolution == null)
-				return items;
+			if (ParentSolution == null) {
+				yield break;
+			}
 
-			var ctx = new ProjectParserContext (this, (DotNetProjectConfiguration)GetConfiguration (configuration));
-			foreach (ProjectReference pref in References) {
-				if (pref.ReferenceType == ReferenceType.Project &&
-				    (string.IsNullOrEmpty (pref.Condition) || ConditionParser.ParseAndEvaluate (pref.Condition, ctx))) {
-					Project rp = pref.ResolveProject (ParentSolution);
-					if (rp != null)
-						items.Add (rp);
+			foreach (var reference in GetReferences (configuration).Result) {
+				if (reference.IsProjectReference) {
+					var item = reference.GetReferencedItem (ParentSolution);
+					if (item != null) {
+						yield return item;
+					}
 				}
 			}
-			return items;
 		}
 
 		/// <summary>
@@ -907,79 +901,9 @@ namespace MonoDevelop.Projects
 		internal protected virtual async Task<List<AssemblyReference>> OnGetReferencedAssemblies (ConfigurationSelector configuration)
 		{
 			var result = new List<AssemblyReference> ();
-			if (CheckUseMSBuildEngine (configuration)) {
-				foreach (var r in await OnGetReferences (configuration, CancellationToken.None)) {
-					if (!r.IsProjectReference) {
-						result.Add (r);
-					}
-				}
-				return result;
-			}
-
-			foreach (ProjectReference pref in References) {
-				if (pref.ReferenceType != ReferenceType.Project) {
-					foreach (string asm in pref.GetReferencedFileNames (configuration))
-						result.Add (new AssemblyReference (asm, pref.Aliases));
-				}
-			}
-			var mscorlib = AssemblyContext.GetAssemblyFullName ("mscorlib", TargetFramework);
-			var mscorlibPath = AssemblyContext.GetAssemblyLocation (mscorlib, TargetFramework);
-			if (!result.Any (ar => ar.FilePath == mscorlibPath))
-				result.Add (new AssemblyReference (mscorlibPath));
-
-			var core = AssemblyContext.GetAssemblyFullName ("System.Core", TargetFramework);
-			var corePath = AssemblyContext.GetAssemblyLocation (core, TargetFramework);
-			if (!string.IsNullOrEmpty (corePath)) {
-				if (!result.Any (ar => ar.FilePath == corePath))
-					result.Add (new AssemblyReference (corePath));
-			}
-
-			var config = (DotNetProjectConfiguration)GetConfiguration (configuration);
-			bool noStdLib = false;
-			if (config != null)
-				noStdLib = config.CompilationParameters.NoStdLib;
-
-			// System.Core is an implicit reference
-			if (!noStdLib) {
-				var sa = AssemblyContext.GetAssemblies (TargetFramework).FirstOrDefault (a => a.Name == "System.Core" && a.Package.IsFrameworkPackage);
-				if (sa != null) {
-					var ar = new AssemblyReference (sa.Location);
-					if (!result.Contains (ar))
-						result.Add (ar);
-				}
-			}
-			var addFacadeAssemblies = false;
-			foreach (var r in GetReferencedAssemblyProjects (configuration)) {
-				// Facade assemblies need to be referenced if this project is referencing a PCL or .NET Standard project.
-				if (r.IsPortableLibrary || r.TargetFramework.Id.Identifier == ".NETStandard") {
-					addFacadeAssemblies = true;
-					break;
-				}
-			}
-			if (!addFacadeAssemblies) {
-				foreach (var refFilename in result) {
-					string fullPath = null;
-					if (!Path.IsPathRooted (refFilename.FilePath)) {
-						fullPath = Path.Combine (Path.GetDirectoryName (FileName), refFilename.FilePath);
-					} else {
-						fullPath = Path.GetFullPath (refFilename.FilePath);
-					}
-					if (await SystemAssemblyService.ContainsReferenceToSystemRuntimeAsync (fullPath)) {
-						addFacadeAssemblies = true;
-						break;
-					}
-				}
-			}
-
-			if (addFacadeAssemblies) {
-				var runtime = TargetRuntime ?? MonoDevelop.Core.Runtime.SystemAssemblyService.DefaultRuntime;
-				var facades = runtime.FindFacadeAssembliesForPCL (TargetFramework);
-				foreach (var facade in facades) {
-					if (!File.Exists (facade))
-						continue;
-					var ar = new AssemblyReference (facade);
-					if (!result.Contains (ar))
-						result.Add (ar);
+			foreach (var r in await OnGetReferences (configuration, CancellationToken.None)) {
+				if (!r.IsProjectReference) {
+					result.Add (r);
 				}
 			}
 			return result;
@@ -995,22 +919,22 @@ namespace MonoDevelop.Projects
 		internal protected virtual async Task<List<PackageDependency>> OnGetPackageDependencies (ConfigurationSelector configuration, CancellationToken cancellationToken)
 		{
 			var result = new List<PackageDependency> ();
-			if (CheckUseMSBuildEngine (configuration)) {
-				// Get the references list from the msbuild project
-				RemoteProjectBuilder builder = await GetProjectBuilder ();
-				try {
-					var configs = GetConfigurations (configuration, false);
-					var globalProperties = CreateGlobalProperties ();
 
-					PackageDependency [] dependencies;
-					using (Counters.ResolveMSBuildReferencesTimer.BeginTiming (GetProjectEventMetadata (configuration)))
-						dependencies = await builder.ResolvePackageDependencies (configs, globalProperties, cancellationToken);
-					foreach (var d in dependencies)
-						result.Add (d);
-				} finally {
-					builder.ReleaseReference ();
-				}
+			// Get the references list from the msbuild project
+			RemoteProjectBuilder builder = await GetProjectBuilder ();
+			try {
+				var configs = GetConfigurations (configuration, false);
+				var globalProperties = CreateGlobalProperties ();
+
+				PackageDependency [] dependencies;
+				using (Counters.ResolveMSBuildReferencesTimer.BeginTiming (GetProjectEventMetadata (configuration)))
+					dependencies = await builder.ResolvePackageDependencies (configs, globalProperties, cancellationToken);
+				foreach (var d in dependencies)
+					result.Add (d);
+			} finally {
+				builder.ReleaseReference ();
 			}
+
 			return result;
 		}
 
@@ -1021,13 +945,12 @@ namespace MonoDevelop.Projects
 				yield break;
 			}
 
-			var ctx = new ProjectParserContext (this, (DotNetProjectConfiguration)GetConfiguration (configuration));
-			foreach (ProjectReference pref in References) {
-				if (pref.ReferenceType == ReferenceType.Project && pref.ReferenceOutputAssembly &&
-					(string.IsNullOrEmpty (pref.Condition) || ConditionParser.ParseAndEvaluate (pref.Condition, ctx))) {
-					var rp = pref.ResolveProject (ParentSolution) as DotNetProject;
-					if (rp != null)
-						yield return rp;
+			foreach (var reference in GetReferences (configuration).Result) {
+				if (reference.IsProjectReference) {
+					var item = reference.GetReferencedItem (ParentSolution);
+					if (item is DotNetProject p) {
+						yield return p;
+					}
 				}
 			}
 		}
@@ -1036,10 +959,6 @@ namespace MonoDevelop.Projects
 		{
 			if (ParentSolution == null) {
 				return new List<AssemblyReference> ();
-			}
-
-			if (!CheckUseMSBuildEngine (configuration)) {
-				throw new NotSupportedException ("MSBuild is required");
 			}
 
 			RemoteProjectBuilder builder = await GetProjectBuilder ();
@@ -1058,14 +977,12 @@ namespace MonoDevelop.Projects
 
 		protected override Task<BuildResult> DoBuild (ProgressMonitor monitor, ConfigurationSelector configuration)
 		{
-			var handler = new MD1DotNetProjectHandler (this);
-			return handler.RunTarget (monitor, "Build", configuration);
+			throw new InvalidOperationException ("Build must be performed via MSBuild");
 		}
 
 		protected override Task<BuildResult> DoClean (ProgressMonitor monitor, ConfigurationSelector configuration)
 		{
-			var handler = new MD1DotNetProjectHandler (this);
-			return handler.RunTarget (monitor, "Clean", configuration);
+			throw new InvalidOperationException ("Build must be performed via MSBuild");
 		}
 
 		protected internal override Task OnSave (ProgressMonitor monitor)
@@ -1156,10 +1073,21 @@ namespace MonoDevelop.Projects
 				}
 			}
 
+			bool IsFileNewerThan (string first, string second) =>
+				new FileInfo (first).LastWriteTime > new FileInfo (second).LastWriteTime;
+
+			// true if the resx file or any file referenced
+			// by the resx is newer than the .resources file
+			bool IsResgenRequired (string resxFilename, string outputFilename) {
+				if (File.Exists (outputFilename))
+					return IsFileNewerThan (resxFilename, outputFilename);
+				return IsFileNewerThan (resxFilename, Path.ChangeExtension (resxFilename, ".resources"));
+			};
+
 			var config = (DotNetProjectConfiguration) GetConfiguration (configuration);
 			return Files.Any (file => file.BuildAction == BuildAction.EmbeddedResource
 					&& String.Compare (Path.GetExtension (file.FilePath), ".resx", StringComparison.OrdinalIgnoreCase) == 0
-					&& MD1DotNetProjectHandler.IsResgenRequired (file.FilePath, config.IntermediateOutputDirectory.Combine (file.ResourceId)));
+					&& IsResgenRequired (file.FilePath, config.IntermediateOutputDirectory.Combine (file.ResourceId)));
 		}
 
 		protected internal override DateTime OnGetLastBuildTime (ConfigurationSelector configuration)
@@ -1190,16 +1118,13 @@ namespace MonoDevelop.Projects
 
 		public FilePath GetAssemblyDebugInfoFile (ConfigurationSelector configuration, FilePath exeFile)
 		{
-			if (CheckUseMSBuildEngine (configuration)) {
-				var mono = TargetRuntime as MonoTargetRuntime;
-				if (mono != null) {
-					var version = mono.MonoRuntimeInfo?.RuntimeVersion;
-					if (version == null || (version < new Version (4, 9, 0)))
-						return exeFile + ".mdb";
-				}
-				return exeFile.ChangeExtension (".pdb");
-			} else
-				return exeFile + ".mdb";
+			var mono = TargetRuntime as MonoTargetRuntime;
+			if (mono != null) {
+				var version = mono.MonoRuntimeInfo?.RuntimeVersion;
+				if (version == null || (version < new Version (4, 9, 0)))
+					return exeFile + ".mdb";
+			}
+			return exeFile.ChangeExtension (".pdb");
 		}
 
 		public IList<string> GetUserAssemblyPaths (ConfigurationSelector configuration)
@@ -1370,14 +1295,10 @@ namespace MonoDevelop.Projects
 			return baseFiles;
 		}
 
-		internal Task<BuildResult> Compile (ProgressMonitor monitor, BuildData buildData)
-		{
-			return ProjectExtension.OnCompile (monitor, buildData);
-		}
-
+		[Obsolete]
 		protected virtual Task<BuildResult> OnCompile (ProgressMonitor monitor, BuildData buildData)
 		{
-			return MD1DotNetProjectHandler.Compile (monitor, this, buildData);
+			throw new InvalidOperationException ();
 		}
 
 		protected override bool OnGetIsCompileable (string fileName)

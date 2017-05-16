@@ -28,6 +28,7 @@ using System;
 namespace MonoDevelop.Projects
 {
 	[Flags]
+	[Obsolete("MSBuild is always required")]
 	public enum MSBuildSupport
 	{
 		/// <summary>

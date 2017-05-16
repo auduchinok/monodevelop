@@ -23,14 +23,13 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
-using MonoDevelop.Projects;
-using MonoDevelop.Projects.MSBuild;
-using MonoDevelop.Core;
-using MonoDevelop.Core.Serialization;
-using MonoDevelop.Projects.Extensions;
 using System.Collections.Generic;
+using MonoDevelop.Core;
 using MonoDevelop.Core.Instrumentation;
+using MonoDevelop.Core.Serialization;
+using MonoDevelop.Projects;
 
 namespace MonoDevelop.CSharp.Project
 {
@@ -131,11 +130,6 @@ namespace MonoDevelop.CSharp.Project
 			prop = pset.GetProperty ("CodePage");
 			if (prop != null)
 				codePage = int.Parse (prop.Value);
-		}
-
-		protected override BuildResult OnCompileSources (ProjectItemCollection items, DotNetProjectConfiguration configuration, ConfigurationSelector configSelector, ProgressMonitor monitor)
-		{
-			return CSharpBindingCompilerManager.Compile (items, configuration, configSelector, monitor);
 		}
 
 		protected override DotNetCompilerParameters OnCreateCompilationParameters (DotNetProjectConfiguration config, ConfigurationKind kind)

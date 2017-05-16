@@ -432,7 +432,6 @@
     <Compile Include="MonoDevelop.Projects.Extensions\MonoDocSourceNode.cs" />
     <Compile Include="MonoDevelop.Projects.Extensions\ProjectLanguageCondition.cs" />
     <Compile Include="MonoDevelop.Projects.Extensions\IAssemblyReferenceHandler.cs" />
-    <Compile Include="MonoDevelop.Projects.MD1\MD1DotNetProjectHandler.cs" />
     <Compile Include="MonoDevelop.Projects.MD1\MD1FileFormat.cs" />
     <Compile Include="MonoDevelop.Projects.MSBuild\ConfigFileUtilities.cs" />
     <Compile Include="MonoDevelop.Projects.MSBuild\MSBuildFileFormat.cs" />

@@ -437,7 +437,11 @@ namespace MonoDevelop.Projects.MSBuild
 		/// </summary>
 		/// <remarks>When set to false, evaluation support is limited but it allows loading projects
 		/// which are not fully compliant with MSBuild (old MD projects).</remarks>
-		public bool UseMSBuildEngine { get; set; }
+		[Obsolete("MSBuild is always required")]
+		public bool UseMSBuildEngine {
+			get { return true; }
+			set {}
+		}
 
 		public void Evaluate ()
 		{
@@ -468,14 +472,12 @@ namespace MonoDevelop.Projects.MSBuild
 		internal MSBuildProjectInstanceInfo LoadNativeInstance ()
 		{
 			lock (readLock) {
-				var supportsMSBuild = UseMSBuildEngine && GetGlobalPropertyGroup ().GetValue ("UseMSBuildEngine", true);
-
 				if (engineManager == null) {
 					engineManager = new MSBuildEngineManager ();
 					engineManagerIsLocal = true;
 				}
 
-				MSBuildEngine e = engineManager.GetEngine (supportsMSBuild);
+				MSBuildEngine e = engineManager.GetEngine ();
 
 				if (nativeProjectInfo != null && nativeProjectInfo.Engine != null && (nativeProjectInfo.Engine != e || nativeProjectInfo.ProjectStamp != ChangeStamp)) {
 					nativeProjectInfo.Engine.UnloadProject (nativeProjectInfo.Project);

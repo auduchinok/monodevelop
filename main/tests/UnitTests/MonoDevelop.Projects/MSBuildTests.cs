@@ -84,14 +84,13 @@ namespace MonoDevelop.Projects
 		[Test]
 		[TestCase (true)]
 		[TestCase (false)]
-		public async Task EvaluateUnknownPropertyDuringBuild (bool requiresMSBuild)
+		public async Task EvaluateUnknownPropertyDuringBuild ()
 		{
 			string solFile = Util.GetSampleProject ("console-project", "ConsoleProject.sln");
 
 			Solution sol = (Solution)await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 
 			var project = ((Project)sol.Items [0]);
-			project.RequiresMicrosoftBuild = requiresMSBuild;
 
 			var context = new TargetEvaluationContext ();
 			context.PropertiesToEvaluate.Add ("TestUnknownPropertyToEvaluate");
@@ -2461,7 +2460,6 @@ namespace MonoDevelop.Projects
 		{
 			string projFile = Util.GetSampleProject ("msbuild-tests", "project-with-custom-build-target2.csproj");
 			var p = (Project)await Services.ProjectService.ReadSolutionItem (Util.GetMonitor (), projFile);
-			p.RequiresMicrosoftBuild = true;
 
 			var ctx = new ProjectOperationContext ();
 			ctx.GlobalProperties.SetValue ("TestProp", "foo");
@@ -2491,7 +2489,6 @@ namespace MonoDevelop.Projects
 		{
 			string projFile = Util.GetSampleProject ("msbuild-tests", "project-with-custom-build-target3.csproj");
 			var p = (Project)await Services.ProjectService.ReadSolutionItem (Util.GetMonitor (), projFile);
-			p.RequiresMicrosoftBuild = true;
 
 			var ctx = new ProjectOperationContext ();
 			ctx.GlobalProperties.SetValue ("BuildingInsideVisualStudio", "false");
@@ -2527,7 +2524,6 @@ namespace MonoDevelop.Projects
 			try {
 				var sol = (Solution)await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 				var p = (Project)sol.Items [0];
-				p.RequiresMicrosoftBuild = true;
 
 				p.DefaultConfiguration = new DotNetProjectConfiguration ("Debug") {
 					OutputAssembly = p.BaseDirectory.Combine ("bin", "test.dll")
@@ -2561,7 +2557,6 @@ namespace MonoDevelop.Projects
 			var sol = (Solution)await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 			var p = (Project)sol.Items [0];
 			Assert.AreEqual ("DotNetFrameworkProject", p.Name);
-			p.RequiresMicrosoftBuild = true;
 
 			p.DefaultConfiguration = new DotNetProjectConfiguration ("Debug") {
 				OutputAssembly = p.BaseDirectory.Combine ("bin", "test.dll")
@@ -2586,12 +2581,10 @@ namespace MonoDevelop.Projects
 			var sol = (Solution)await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 			var p = (DotNetProject)sol.Items [0];
 			Assert.AreEqual ("DotNetFrameworkProject", p.Name);
-			p.RequiresMicrosoftBuild = true;
 
 			FilePath projectFile = sol.BaseDirectory.Combine ("DotNetCoreNetStandardProject", "DotNetCoreNetStandardProject.csproj");
 			var dotNetCoreProject = (Project)await sol.RootFolder.AddItem (Util.GetMonitor (), projectFile);
 			//var dotNetCoreProject = (DotNetProject)sol.Items [0];
-			dotNetCoreProject.RequiresMicrosoftBuild = true;
 			await sol.SaveAsync (Util.GetMonitor ());
 
 			p.DefaultConfiguration = new DotNetProjectConfiguration ("Debug") {

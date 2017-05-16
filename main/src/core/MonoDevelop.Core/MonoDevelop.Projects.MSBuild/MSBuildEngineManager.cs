@@ -34,22 +34,8 @@ namespace MonoDevelop.Projects.MSBuild
 		object localLock = new object ();
 		bool disposed;
 
-		public MSBuildEngine GetEngine (bool supportsMSBuild)
+		public MSBuildEngine GetEngine ()
 		{
-/*			if (supportsMSBuild) {
-				lock (localLock) {
-					if (disposed)
-						throw new ObjectDisposedException ("MSBuildEngineManager");
-					if (msbuildEngine == null) {
-						#if !WINDOWS
-						msbuildEngine = new MSBuildEngineV4 (this);
-						#else
-						msbuildEngine = new MSBuildEngineV12 (this);
-						#endif
-					}
-					return msbuildEngine;
-				}
-			}*/
 			lock (localLock) {
 				if (disposed)
 					throw new ObjectDisposedException ("MSBuildEngineManager");

@@ -106,14 +106,6 @@ namespace MonoDevelop.VBNetBinding
 			StockIcon = "md-project";
 		}
 
-		VBBindingCompilerServices compilerServices = new VBBindingCompilerServices();
-
-		protected override BuildResult OnCompileSources (ProjectItemCollection items, DotNetProjectConfiguration configuration, ConfigurationSelector configSelector, MonoDevelop.Core.ProgressMonitor monitor)
-		{
-			Debug.Assert(compilerServices != null);
-			return compilerServices.Compile (items, configuration, configSelector, monitor);
-		}
-
 		protected override DotNetCompilerParameters OnCreateCompilationParameters (DotNetProjectConfiguration config, ConfigurationKind kind)
 		{
 			var pars = new VBCompilerParameters ();

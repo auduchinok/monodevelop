@@ -31,11 +31,6 @@ namespace ILAsmBinding
 {
 	public class ILAsmProject: DotNetProject
 	{
-		protected override BuildResult OnCompileSources (ProjectItemCollection items, DotNetProjectConfiguration configuration, ConfigurationSelector configSelector, ProgressMonitor monitor)
-		{
-			return ILAsmCompilerManager.Compile (items, configuration, configSelector, monitor);
-		}
-
 		protected override DotNetCompilerParameters OnCreateCompilationParameters (DotNetProjectConfiguration config, ConfigurationKind kind)
 		{
 			return new ILAsmCompilerParameters();

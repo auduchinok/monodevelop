@@ -235,7 +235,6 @@
     <Compile Include="MonoDevelop.CSharp.Project\CompilerOptionsPanelWidget.cs" />
     <Compile Include="gtk-gui\MonoDevelop.CSharp.Project.CodeGenerationPanelWidget.cs" />
     <Compile Include="gtk-gui\MonoDevelop.CSharp.Project.CompilerOptionsPanelWidget.cs" />
-    <Compile Include="MonoDevelop.CSharp\CSharpBindingCompilerManager.cs" />
     <Compile Include="MonoDevelop.CSharp\CSharpEnhancedCodeProvider.cs" />
     <Compile Include="MonoDevelop.CSharp.Formatting\Indent.cs" />
     <Compile Include="MonoDevelop.CSharp.Formatting\OnTheFlyFormatter.cs" />

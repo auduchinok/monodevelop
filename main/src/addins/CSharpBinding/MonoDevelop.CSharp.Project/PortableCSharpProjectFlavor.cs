@@ -35,7 +35,6 @@ namespace MonoDevelop.CSharp.Project
 		protected override void Initialize ()
 		{
 			base.Initialize ();
-			Project.UseMSBuildEngine = true;
 		}
 
 		protected override void OnGetDefaultImports (System.Collections.Generic.List<string> imports)

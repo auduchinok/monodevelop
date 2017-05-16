@@ -405,6 +405,7 @@ namespace MonoDevelop.Projects
 			}
 		}
 
+		[Obsolete("MSBuild is always required")]
 		public MSBuildSupport MSBuildEngineSupport { get; private set; }
 
 		protected override void OnModified (SolutionItemModifiedEventArgs args)
@@ -427,8 +428,6 @@ namespace MonoDevelop.Projects
 		{
 			if (sourceProject == null || sourceProject.IsNewProject) {
 				sourceProject = await MSBuildProject.LoadAsync (FileName).ConfigureAwait (false);
-				if (MSBuildEngineSupport == MSBuildSupport.NotSupported)
-					sourceProject.UseMSBuildEngine = false;
 				sourceProject.Evaluate ();
 			}
 
@@ -1168,120 +1167,110 @@ namespace MonoDevelop.Projects
 
 		async Task<TargetEvaluationResult> RunMSBuildTarget (ProgressMonitor monitor, string target, ConfigurationSelector configuration, TargetEvaluationContext context)
 		{
-			if (CheckUseMSBuildEngine (configuration)) {
-				var configs = GetConfigurations (configuration);	
+			var configs = GetConfigurations (configuration);	
 
-				string [] evaluateItems = context != null ? context.ItemsToEvaluate.ToArray () : new string [0];
-				string [] evaluateProperties = context != null ? context.PropertiesToEvaluate.ToArray () : new string [0];
+			string [] evaluateItems = context != null ? context.ItemsToEvaluate.ToArray () : new string [0];
+			string [] evaluateProperties = context != null ? context.PropertiesToEvaluate.ToArray () : new string [0];
 
-				var globalProperties = CreateGlobalProperties ();
-				if (context != null) {
-					var md = (ProjectItemMetadata)context.GlobalProperties;
-					md.SetProject (sourceProject);
-					foreach (var p in md.GetProperties ())
-						globalProperties [p.Name] = p.Value;
+			var globalProperties = CreateGlobalProperties ();
+			if (context != null) {
+				var md = (ProjectItemMetadata)context.GlobalProperties;
+				md.SetProject (sourceProject);
+				foreach (var p in md.GetProperties ())
+					globalProperties [p.Name] = p.Value;
+			}
+
+			MSBuildResult result = null;
+			await Task.Run (async delegate {
+
+				bool operationRequiresExclusiveLock = false;
+				TimerCounter buildTimer = null;
+				switch (target) {
+				case "Build": buildTimer = Counters.BuildMSBuildProjectTimer; operationRequiresExclusiveLock = true; break;
+				case "Clean": buildTimer = Counters.CleanMSBuildProjectTimer; operationRequiresExclusiveLock = true; break;
 				}
 
-				MSBuildResult result = null;
-				await Task.Run (async delegate {
+				var t1 = Counters.RunMSBuildTargetTimer.BeginTiming (GetProjectEventMetadata (configuration));
+				var t2 = buildTimer != null ? buildTimer.BeginTiming (GetProjectEventMetadata (configuration)) : null;
 
-					bool operationRequiresExclusiveLock = false;
-					TimerCounter buildTimer = null;
-					switch (target) {
-					case "Build": buildTimer = Counters.BuildMSBuildProjectTimer; operationRequiresExclusiveLock = true; break;
-					case "Clean": buildTimer = Counters.CleanMSBuildProjectTimer; operationRequiresExclusiveLock = true; break;
+				bool newBuilderRequested = false;
+
+				RemoteProjectBuilder builder = await GetProjectBuilder ().ConfigureAwait (false);
+
+				// If the builder requires an exclusive lock and it is busy, create a new locked builder.
+				// Fast operations that don't require an exclusive lock can use any builder, either locked or not
+
+				if (builder.IsBusy && operationRequiresExclusiveLock) {
+					builder.ReleaseReference ();
+					newBuilderRequested = true;
+					builder = await RequestLockedBuilder ().ConfigureAwait (false);
+				}
+				else
+					builder.Lock ();
+
+				string [] targets;
+				if (target.IndexOf (';') != -1)
+					targets = target.Split (new [] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+				else
+					targets = new string [] { target };
+				
+				try {
+					result = await builder.Run (configs, monitor.Log, new ProxyLogger (this, context.Loggers), context.LogVerbosity, targets, evaluateItems, evaluateProperties, globalProperties, monitor.CancellationToken).ConfigureAwait (false);
+				} finally {
+					builder.Unlock ();
+					builder.ReleaseReference ();
+					if (newBuilderRequested) {
+						// Dispose the builder after a while, so that it can be reused
+						#pragma warning disable 4014
+						Task.Delay (10000).ContinueWith (t => builder.Dispose ());
+						#pragma warning restore 4014
 					}
+					t1.End ();
+					if (t2 != null)
+						t2.End ();
+				}
+			});
 
-					var t1 = Counters.RunMSBuildTargetTimer.BeginTiming (GetProjectEventMetadata (configuration));
-					var t2 = buildTimer != null ? buildTimer.BeginTiming (GetProjectEventMetadata (configuration)) : null;
+			var br = new BuildResult ();
+			foreach (var err in result.Errors) {
+				FilePath file = null;
+				if (err.File != null)
+					file = Path.Combine (Path.GetDirectoryName (err.ProjectFile), err.File);
 
-					bool newBuilderRequested = false;
-
-					RemoteProjectBuilder builder = await GetProjectBuilder ().ConfigureAwait (false);
-
-					// If the builder requires an exclusive lock and it is busy, create a new locked builder.
-					// Fast operations that don't require an exclusive lock can use any builder, either locked or not
-
-					if (builder.IsBusy && operationRequiresExclusiveLock) {
-						builder.ReleaseReference ();
-						newBuilderRequested = true;
-						builder = await RequestLockedBuilder ().ConfigureAwait (false);
-					}
-					else
-						builder.Lock ();
-
-					string [] targets;
-					if (target.IndexOf (';') != -1)
-						targets = target.Split (new [] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-					else
-						targets = new string [] { target };
-					
-					try {
-						result = await builder.Run (configs, monitor.Log, new ProxyLogger (this, context.Loggers), context.LogVerbosity, targets, evaluateItems, evaluateProperties, globalProperties, monitor.CancellationToken).ConfigureAwait (false);
-					} finally {
-						builder.Unlock ();
-						builder.ReleaseReference ();
-						if (newBuilderRequested) {
-							// Dispose the builder after a while, so that it can be reused
-							#pragma warning disable 4014
-							Task.Delay (10000).ContinueWith (t => builder.Dispose ());
-							#pragma warning restore 4014
-						}
-						t1.End ();
-						if (t2 != null)
-							t2.End ();
-					}
+				br.Append (new BuildError (file, err.LineNumber, err.ColumnNumber, err.Code, err.Message) {
+					Subcategory = err.Subcategory,
+					EndLine = err.EndLineNumber,
+					EndColumn = err.EndColumnNumber,
+					IsWarning = err.IsWarning,
+					HelpKeyword = err.HelpKeyword,
 				});
-
-				var br = new BuildResult ();
-				foreach (var err in result.Errors) {
-					FilePath file = null;
-					if (err.File != null)
-						file = Path.Combine (Path.GetDirectoryName (err.ProjectFile), err.File);
-
-					br.Append (new BuildError (file, err.LineNumber, err.ColumnNumber, err.Code, err.Message) {
-						Subcategory = err.Subcategory,
-						EndLine = err.EndLineNumber,
-						EndColumn = err.EndColumnNumber,
-						IsWarning = err.IsWarning,
-						HelpKeyword = err.HelpKeyword,
-					});
-				}
-
-				// Get the evaluated properties
-
-				var properties = new Dictionary<string, IMSBuildPropertyEvaluated> ();
-				foreach (var p in result.Properties)
-					properties [p.Key] = new MSBuildPropertyEvaluated (sourceProject, p.Key, p.Value, p.Value);
-
-				var props = new MSBuildPropertyGroupEvaluated (sourceProject);
-				props.SetProperties (properties);
-
-				// Get the evaluated items
-
-				var evItems = new List<IMSBuildItemEvaluated> ();
-				foreach (var it in result.Items.SelectMany (d => d.Value)) {
-					var eit = new MSBuildItemEvaluated (sourceProject, it.Name, it.ItemSpec, it.ItemSpec);
-					if (it.Metadata.Count > 0) {
-						var imd = (MSBuildPropertyGroupEvaluated)eit.Metadata;
-						properties = new Dictionary<string, IMSBuildPropertyEvaluated> ();
-						foreach (var m in it.Metadata)
-							properties [m.Key] = new MSBuildPropertyEvaluated (sourceProject, m.Key, m.Value, m.Value);
-						imd.SetProperties (properties);
-					}
-					evItems.Add (eit);
-				}
-
-				return new TargetEvaluationResult (br, evItems, props);
 			}
-			else {
-				CleanupProjectBuilder ();
-				if (this is DotNetProject) {
-					var handler = new MonoDevelop.Projects.MD1.MD1DotNetProjectHandler ((DotNetProject)this);
-					return new TargetEvaluationResult (await handler.RunTarget (monitor, target, configuration));
+
+			// Get the evaluated properties
+
+			var properties = new Dictionary<string, IMSBuildPropertyEvaluated> ();
+			foreach (var p in result.Properties)
+				properties [p.Key] = new MSBuildPropertyEvaluated (sourceProject, p.Key, p.Value, p.Value);
+
+			var props = new MSBuildPropertyGroupEvaluated (sourceProject);
+			props.SetProperties (properties);
+
+			// Get the evaluated items
+
+			var evItems = new List<IMSBuildItemEvaluated> ();
+			foreach (var it in result.Items.SelectMany (d => d.Value)) {
+				var eit = new MSBuildItemEvaluated (sourceProject, it.Name, it.ItemSpec, it.ItemSpec);
+				if (it.Metadata.Count > 0) {
+					var imd = (MSBuildPropertyGroupEvaluated)eit.Metadata;
+					properties = new Dictionary<string, IMSBuildPropertyEvaluated> ();
+					foreach (var m in it.Metadata)
+						properties [m.Key] = new MSBuildPropertyEvaluated (sourceProject, m.Key, m.Value, m.Value);
+					imd.SetProperties (properties);
 				}
+				evItems.Add (eit);
 			}
-			return null;
+
+			return new TargetEvaluationResult (br, evItems, props);
 		}
 
 		string activeTargetFramework;
@@ -1416,7 +1405,7 @@ namespace MonoDevelop.Projects
 						projectBuilder.Shutdown ();
 						projectBuilder.ReleaseReference ();
 					}
-					var pb = await MSBuildProjectService.GetProjectBuilder (runtime, ToolsVersion, FileName, slnFile, sdkPath, 0, RequiresMicrosoftBuild);
+					var pb = await MSBuildProjectService.GetProjectBuilder (runtime, ToolsVersion, FileName, slnFile, sdkPath, 0, true);
 					pb.AddReference ();
 					pb.Disconnected += delegate {
 						CleanupProjectBuilder ();
@@ -1495,7 +1484,7 @@ namespace MonoDevelop.Projects
 			var slnFile = sln != null ? sln.FileName : null;
 
 			var sdkPath = GetMSBuildSdkPath (runtime);
-			var pb = await MSBuildProjectService.GetProjectBuilder (runtime, ToolsVersion, FileName, slnFile, sdkPath, 0, RequiresMicrosoftBuild, true);
+			var pb = await MSBuildProjectService.GetProjectBuilder (runtime, ToolsVersion, FileName, slnFile, sdkPath, 0, true);
 			pb.AddReference ();
 			if (modifiedInMemory) {
 				try {
@@ -1532,36 +1521,6 @@ namespace MonoDevelop.Projects
 		}
 
 		#endregion
-
-		/// <summary>Whether to use the MSBuild engine for the specified item.</summary>
-		internal bool CheckUseMSBuildEngine (ConfigurationSelector sel, bool checkReferences = true)
-		{
-			// if the item mandates MSBuild, always use it
-			if (MSBuildEngineSupport.HasFlag (MSBuildSupport.Required))
-				return true;
-			// if the user has set the option, use the setting
-			if (UseMSBuildEngine.HasValue)
-				return UseMSBuildEngine.Value;
-
-			// If the item type defaults to using MSBuild, only use MSBuild if its direct references also use MSBuild.
-			// This prevents a not-uncommon common error referencing non-MSBuild projects from MSBuild projects
-			// NOTE: This adds about 11ms to the load/build/etc times of the MonoDevelop solution. Doing it recursively
-			// adds well over a second.
-			return MSBuildEngineSupport.HasFlag (MSBuildSupport.Supported) && (
-				!checkReferences || GetReferencedItems (sel).OfType<Project>().All (i => i.CheckUseMSBuildEngine (sel, false))
-			);
-		}
-
-		bool requiresMicrosoftBuild;
-
-		internal protected bool RequiresMicrosoftBuild {
-			get {
-				return requiresMicrosoftBuild || ProjectExtension.IsMicrosoftBuildRequired;
-			}
-			set {
-				requiresMicrosoftBuild = value;
-			}
-		}
 
 		/// <summary>
 		/// Adds a file to the project
@@ -1670,13 +1629,6 @@ namespace MonoDevelop.Projects
 			AddFile (newDir);
 			return newDir;
 		}
-		
-		//HACK: the build code is structured such that support file copying is in here instead of the item handler
-		//so in order to avoid doing them twice when using the msbuild engine, we special-case them
-		bool UsingMSBuildEngine (ConfigurationSelector sel)
-		{
-			return CheckUseMSBuildEngine (sel);
-		}
 
 		protected override async Task<BuildResult> OnBuild (ProgressMonitor monitor, ConfigurationSelector configuration, OperationContext operationContext)
 		{
@@ -1694,39 +1646,11 @@ namespace MonoDevelop.Projects
 			}
 			
 			StringParserService.Properties["Project"] = Name;
-			
-			if (UsingMSBuildEngine (configuration)) {
-				var result = await RunMSBuildTarget (monitor, "Build", configuration, context);
-				if (!result.BuildResult.Failed)
-					SetFastBuildCheckClean (configuration);
-				return result;			
-			}
-			
-			string outputDir = conf.OutputDirectory;
-			try {
-				DirectoryInfo directoryInfo = new DirectoryInfo (outputDir);
-				if (!directoryInfo.Exists) {
-					directoryInfo.Create ();
-				}
-			} catch (Exception e) {
-				throw new ApplicationException ("Can't create project output directory " + outputDir + " original exception:\n" + e.ToString ());
-			}
 
-			//copy references and files marked to "CopyToOutputDirectory"
-			CopySupportFiles (monitor, configuration);
-		
-			monitor.Log.WriteLine (GettextCatalog.GetString ("Performing main compilation…"));
-			
-			BuildResult res = await DoBuild (monitor, configuration);
-
-			if (res != null) {
-				string errorString = GettextCatalog.GetPluralString ("{0} error", "{0} errors", res.ErrorCount, res.ErrorCount);
-				string warningString = GettextCatalog.GetPluralString ("{0} warning", "{0} warnings", res.WarningCount, res.WarningCount);
-
-				monitor.Log.WriteLine (GettextCatalog.GetString ("Build complete -- ") + errorString + ", " + warningString);
-			}
-
-			return new TargetEvaluationResult (res);
+			var result = await RunMSBuildTarget (monitor, "Build", configuration, context);
+			if (!result.BuildResult.Failed)
+				SetFastBuildCheckClean (configuration);
+			return result;			
 		}
 
 		bool disableFastUpToDateCheck;
@@ -2005,31 +1929,8 @@ namespace MonoDevelop.Projects
 				monitor.ReportError (GettextCatalog.GetString ("Configuration '{0}' not found in project '{1}'", configuration, Name), null);
 				return new TargetEvaluationResult (BuildResult.CreateSuccess ());
 			}
-			
-			if (UsingMSBuildEngine (configuration)) {
-				return await RunMSBuildTarget (monitor, "Clean", configuration, context);
-			}
-			
-			monitor.Log.WriteLine ("Removing output files...");
 
-			var filesToDelete = GetOutputFiles (configuration).ToArray ();
-
-			await Task.Run (delegate {
-				// Delete generated files
-				foreach (FilePath file in filesToDelete) {
-					if (File.Exists (file)) {
-						file.Delete ();
-						if (file.ParentDirectory.CanonicalPath != config.OutputDirectory.CanonicalPath && !Directory.EnumerateFiles (file.ParentDirectory).Any ())
-							file.ParentDirectory.Delete ();
-					}
-				}
-			});
-	
-			await DeleteSupportFiles (monitor, configuration);
-			
-			var res = await DoClean (monitor, config.Selector);
-			monitor.Log.WriteLine (GettextCatalog.GetString ("Clean complete"));
-			return new TargetEvaluationResult (res);
+			return await RunMSBuildTarget (monitor, "Clean", configuration, context);
 		}
 
 		protected virtual Task<BuildResult> DoClean (ProgressMonitor monitor, ConfigurationSelector configuration)

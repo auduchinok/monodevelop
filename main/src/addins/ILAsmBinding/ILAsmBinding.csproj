@@ -89,7 +89,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Project\ILAsmCompilerParameters.cs" />
-    <Compile Include="ILAsmCompilerManager.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Gui\CompilerParametersPanelWidget.cs" />
     <Compile Include="gtk-gui\generated.cs" />

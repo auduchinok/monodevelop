@@ -160,16 +160,8 @@ namespace MonoDevelop.Ide.CustomTools
 			//ignore MSBuild tool for projects that aren't MSBuild or can't build
 			//we could emit a warning but this would get very annoying for Xamarin Forms + SAP
 			//in future we could consider running the MSBuild generator in context of every referencing project
-			if (tool is MSBuildCustomTool) {
-				if (!project.SupportsBuild ()) {
-					return false;
-				}
-				bool byDefault, require;
-				MonoDevelop.Projects.MSBuild.MSBuildProjectService.CheckHandlerUsesMSBuildEngine (project, out byDefault, out require);
-				var usesMSBuild = require || (project.UseMSBuildEngine ?? byDefault);
-				if (!usesMSBuild) {
-					return false;
-				}
+			if (tool is MSBuildCustomTool && !project.SupportsBuild ()) {
+				return false;
 			}
 
 			if (!string.IsNullOrEmpty (file.LastGenOutput)) {
