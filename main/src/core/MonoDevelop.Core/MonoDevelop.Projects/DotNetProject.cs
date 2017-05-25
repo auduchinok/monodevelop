@@ -601,180 +601,6 @@ namespace MonoDevelop.Projects
 			}
 		}
 
-		internal protected override void PopulateOutputFileList (List<FilePath> list, ConfigurationSelector configuration)
-		{
-			base.PopulateOutputFileList (list, configuration);
-			DotNetProjectConfiguration conf = GetConfiguration (configuration) as DotNetProjectConfiguration;
-
-			// Debug info file
-
-			if (conf.DebugSymbols) {
-				string mdbFile = GetAssemblyDebugInfoFile (conf.Selector, conf.CompiledOutputName);
-				list.Add (mdbFile);
-			}
-
-			// Generated satellite resource files
-
-			FilePath outputDir = conf.OutputDirectory;
-			string satelliteAsmName = Path.GetFileNameWithoutExtension (conf.CompiledOutputName) + ".resources.dll";
-
-			HashSet<string> cultures = new HashSet<string> ();
-			foreach (ProjectFile finfo in Files) {
-				if (finfo.Subtype == Subtype.Directory || finfo.BuildAction != BuildAction.EmbeddedResource)
-					continue;
-
-				string culture = GetResourceCulture (finfo.Name);
-				if (culture != null && cultures.Add (culture)) {
-					cultures.Add (culture);
-					FilePath path = outputDir.Combine (culture, satelliteAsmName);
-					list.Add (path);
-				}
-			}
-		}
-
-		[ThreadStatic]
-		static int supportReferDistance;
-		[ThreadStatic]
-		static HashSet<DotNetProject> processedProjects;
-
-		internal protected override void PopulateSupportFileList (FileCopySet list, ConfigurationSelector configuration)
-		{
-			try {
-				if (supportReferDistance == 0)
-					processedProjects = new HashSet<DotNetProject> ();
-				supportReferDistance++;
-
-				PopulateSupportFileListInternal (list, configuration);
-			} finally {
-				supportReferDistance--;
-				if (supportReferDistance == 0)
-					processedProjects = null;
-			}
-		}
-
-		void PopulateSupportFileListInternal (FileCopySet list, ConfigurationSelector configuration)
-		{
-			if (supportReferDistance <= 2)
-				base.PopulateSupportFileList (list, configuration);
-
-			//rename the app.config file
-			list.Remove ("app.config");
-			list.Remove ("App.config");
-
-			ProjectFile appConfig = Files.FirstOrDefault (f => f.FilePath.FileName.Equals ("app.config", StringComparison.CurrentCultureIgnoreCase));
-			if (appConfig != null) {
-				string output = GetOutputFileName (configuration).FileName;
-				list.Add (appConfig.FilePath, true, output + ".config");
-			}
-
-			//collect all the "local copy" references and their attendant files
-			foreach (ProjectReference projectReference in References) {
-				if (!projectReference.LocalCopy || !projectReference.CanSetLocalCopy)
-					continue;
-
-				if (ParentSolution != null && projectReference.ReferenceType == ReferenceType.Project) {
-					DotNetProject p = projectReference.ResolveProject (ParentSolution) as DotNetProject;
-
-					if (p == null) {
-						LoggingService.LogWarning ("Project '{0}' referenced from '{1}' could not be found", projectReference.Reference, this.Name);
-						continue;
-					}
-
-					DotNetProjectConfiguration conf = p.GetConfiguration (configuration) as DotNetProjectConfiguration;
-					//VS COMPAT: recursively copy references's "local copy" files
-					//but only copy the "copy to output" files from the immediate references
-
-					if (processedProjects.Add (p) || supportReferDistance == 1) {
-
-						foreach (var v in p.GetOutputFiles (configuration))
-
-							list.Add (v, true, v.CanonicalPath.ToString ().Substring (conf.OutputDirectory.CanonicalPath.ToString ().Length + 1));
-
-
-
-						foreach (var v in p.GetSupportFileList (configuration))
-
-							list.Add (v.Src, v.CopyOnlyIfNewer, v.Target);
-
-					}
-				}
-				else if (projectReference.ReferenceType == ReferenceType.Assembly) {
-					// VS COMPAT: Copy the assembly, but also all other assemblies referenced by it
-					// that are located in the same folder
-					var visitedAssemblies = new HashSet<string> ();
-					var referencedFiles = projectReference.GetReferencedFileNames (configuration);
-					foreach (string file in referencedFiles.SelectMany (ar => GetAssemblyRefsRec (ar, visitedAssemblies))) {
-						// Indirectly referenced assemblies are only copied if a newer copy doesn't exist. This avoids overwritting directly referenced assemblies
-						// by indirectly referenced stale copies of the same assembly. See bug #655566.
-						bool copyIfNewer = !referencedFiles.Contains (file);
-						list.Add (file, copyIfNewer);
-						if (File.Exists (file + ".config"))
-							list.Add (file + ".config", copyIfNewer);
-						string debugFile = file + ".mdb";
-						if (File.Exists (debugFile))
-							list.Add (debugFile, copyIfNewer);
-						debugFile = Path.ChangeExtension (file, ".pdb");
-						if (File.Exists (debugFile))
-							list.Add (debugFile, copyIfNewer);
-					}
-				}
-				else {
-					foreach (string refFile in projectReference.GetReferencedFileNames (configuration))
-						list.Add (refFile);
-				}
-			}
-		}
-
-		//Given a filename like foo.it.resx, get 'it', if its
-		//a valid culture
-		//Note: hand-written as this can get called lotsa times
-		//Note: code duplicated in prj2make/Utils.cs as TrySplitResourceName
-		internal static string GetResourceCulture (string fname)
-		{
-			int last_dot = -1;
-			int culture_dot = -1;
-			int i = fname.Length - 1;
-			while (i >= 0) {
-				if (fname [i] == '.') {
-					last_dot = i;
-					break;
-				}
-				i --;
-			}
-			if (i < 0)
-				return null;
-
-			i--;
-			while (i >= 0) {
-				if (fname [i] == '.') {
-					culture_dot = i;
-					break;
-				}
-				i --;
-			}
-			if (culture_dot < 0)
-				return null;
-
-			string culture = fname.Substring (culture_dot + 1, last_dot - culture_dot - 1);
-			if (!CultureNamesTable.ContainsKey (culture))
-				return null;
-
-			return culture;
-		}
-
-		static Dictionary<string, string> cultureNamesTable;
-		static Dictionary<string, string> CultureNamesTable {
-			get {
-				if (cultureNamesTable == null) {
-					cultureNamesTable = new Dictionary<string, string> ();
-					foreach (CultureInfo ci in CultureInfo.GetCultures (CultureTypes.AllCultures))
-						cultureNamesTable [ci.Name] = ci.Name;
-				}
-
-				return cultureNamesTable;
-			}
-		}
-
 		IEnumerable<string> GetAssemblyRefsRec (string fileName, HashSet<string> visited)
 		{
 			// Recursivelly finds assemblies referenced by the given assembly
@@ -819,20 +645,28 @@ namespace MonoDevelop.Projects
 			return newReferenceInformation;
 		}
 
+		[Obsolete("Use the overload that returns a task")]
 		protected override IEnumerable<SolutionItem> OnGetReferencedItems (ConfigurationSelector configuration)
 		{
+			return OnGetReferencedItems (configuration, CancellationToken.None).Result;
+		}
+
+		protected override async Task<List<SolutionItem>> OnGetReferencedItems (ConfigurationSelector configuration, CancellationToken token)
+		{
+			var result = new List<SolutionItem> ();
 			if (ParentSolution == null) {
-				yield break;
+				return result;
 			}
 
-			foreach (var reference in GetReferences (configuration).Result) {
+			foreach (var reference in await GetReferences (configuration, token)) {
 				if (reference.IsProjectReference) {
 					var item = reference.GetReferencedItem (ParentSolution);
 					if (item != null) {
-						yield return item;
+						result.Add (item);
 					}
 				}
 			}
+			return result;
 		}
 
 		/// <summary>
@@ -923,7 +757,7 @@ namespace MonoDevelop.Projects
 			// Get the references list from the msbuild project
 			RemoteProjectBuilder builder = await GetProjectBuilder ();
 			try {
-				var configs = GetConfigurations (configuration, false);
+				var configs = await GetConfigurations (configuration, false);
 				var globalProperties = CreateGlobalProperties ();
 
 				PackageDependency [] dependencies;
@@ -963,7 +797,7 @@ namespace MonoDevelop.Projects
 
 			RemoteProjectBuilder builder = await GetProjectBuilder ();
 			try {
-				var configs = GetConfigurations (configuration, false);
+				var configs = await GetConfigurations (configuration, false);
 				var globalProperties = CreateGlobalProperties ();
 
 				using (Counters.ResolveMSBuildReferencesTimer.BeginTiming (GetProjectEventMetadata (configuration))) {
@@ -973,16 +807,6 @@ namespace MonoDevelop.Projects
 			} finally {
 				builder.ReleaseReference ();
 			}
-		}
-
-		protected override Task<BuildResult> DoBuild (ProgressMonitor monitor, ConfigurationSelector configuration)
-		{
-			throw new InvalidOperationException ("Build must be performed via MSBuild");
-		}
-
-		protected override Task<BuildResult> DoClean (ProgressMonitor monitor, ConfigurationSelector configuration)
-		{
-			throw new InvalidOperationException ("Build must be performed via MSBuild");
 		}
 
 		protected internal override Task OnSave (ProgressMonitor monitor)
@@ -1036,79 +860,6 @@ namespace MonoDevelop.Projects
 				return conf.CompiledOutputName;
 			else
 				return null;
-		}
-
-		protected override bool CheckNeedsBuild (ConfigurationSelector configuration)
-		{
-			if (base.CheckNeedsBuild (configuration))
-				return true;
-
-			// base.CheckNeedsBuild() checks Project references, but not Assembly, Package, or Custom.
-			DateTime mtime = GetLastBuildTime (configuration);
-			foreach (ProjectReference pref in References) {
-				switch (pref.ReferenceType) {
-				case ReferenceType.Assembly:
-					foreach (var file in GetAssemblyRefsRec (pref.Reference, new HashSet<string> ())) {
-						try {
-							if (File.GetLastWriteTime (file) > mtime)
-								return true;
-						} catch (IOException) {
-							// Ignore.
-						}
-					}
-					break;
-				case ReferenceType.Package:
-					if (pref.Package == null) {
-						break;
-					}
-					foreach (var assembly in pref.Package.Assemblies) {
-						try {
-							if (File.GetLastWriteTime (assembly.Location) > mtime)
-								return true;
-						} catch (IOException) {
-							// Ignore.
-						}
-					}
-					break;
-				}
-			}
-
-			bool IsFileNewerThan (string first, string second) =>
-				new FileInfo (first).LastWriteTime > new FileInfo (second).LastWriteTime;
-
-			// true if the resx file or any file referenced
-			// by the resx is newer than the .resources file
-			bool IsResgenRequired (string resxFilename, string outputFilename) {
-				if (File.Exists (outputFilename))
-					return IsFileNewerThan (resxFilename, outputFilename);
-				return IsFileNewerThan (resxFilename, Path.ChangeExtension (resxFilename, ".resources"));
-			};
-
-			var config = (DotNetProjectConfiguration) GetConfiguration (configuration);
-			return Files.Any (file => file.BuildAction == BuildAction.EmbeddedResource
-					&& String.Compare (Path.GetExtension (file.FilePath), ".resx", StringComparison.OrdinalIgnoreCase) == 0
-					&& IsResgenRequired (file.FilePath, config.IntermediateOutputDirectory.Combine (file.ResourceId)));
-		}
-
-		protected internal override DateTime OnGetLastBuildTime (ConfigurationSelector configuration)
-		{
-			var outputBuildTime = base.OnGetLastBuildTime (configuration);
-
-			//if the debug file is newer than the output file, use that as the build time
-			var conf = (DotNetProjectConfiguration) GetConfiguration (configuration);
-			if (GeneratesDebugInfoFile && conf != null && conf.DebugSymbols) {
-				string file = GetOutputFileName (configuration);
-				if (file != null) {
-					file = GetAssemblyDebugInfoFile (configuration, file);
-					var finfo = new FileInfo (file);
-					if (finfo.Exists)  {
-						var debugFileBuildTime = finfo.LastWriteTime;
-						if (debugFileBuildTime > outputBuildTime)
-							return debugFileBuildTime;
-					}
-				}
-			}
-			return outputBuildTime;
 		}
 
 		public FilePath GetAssemblyDebugInfoFile (ConfigurationSelector configuration)
@@ -1830,23 +1581,23 @@ namespace MonoDevelop.Projects
 				return Project.OnGetReferences (configuration, token);
 			}
 
-#pragma warning disable 672 // Member overrides obsolete member
-
+			[Obsolete]
 			internal protected override Task<List<AssemblyReference>> OnGetReferencedAssemblies (ConfigurationSelector configuration)
 			{
 				return Project.OnGetReferencedAssemblies (configuration);
 			}
 
+			[Obsolete]
 			internal protected override IEnumerable<DotNetProject> OnGetReferencedAssemblyProjects (ConfigurationSelector configuration)
 			{
 				return Project.OnGetReferencedAssemblyProjects (configuration);
 			}
 
+			[Obsolete]
 			internal protected override ExecutionCommand OnCreateExecutionCommand (ConfigurationSelector configSel, DotNetProjectConfiguration configuration)
 			{
 				return Project.OnCreateExecutionCommand (configSel, configuration);
 			}
-#pragma warning restore 672 // Member overrides obsolete member
 
 			internal protected override ExecutionCommand OnCreateExecutionCommand (ConfigurationSelector configSel, DotNetProjectConfiguration configuration, ProjectRunConfiguration runConfiguration)
 			{
@@ -1868,6 +1619,7 @@ namespace MonoDevelop.Projects
 				Project.OnReferencedAssembliesChanged ();
 			}
 
+			[Obsolete]
 			internal protected override Task<BuildResult> OnCompile (ProgressMonitor monitor, BuildData buildData)
 			{
 				return Project.OnCompile (monitor, buildData);

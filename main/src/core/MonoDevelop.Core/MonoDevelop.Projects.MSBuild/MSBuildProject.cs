@@ -128,7 +128,6 @@ namespace MonoDevelop.Projects.MSBuild
 			ParentProject = this;
 			hadXmlDeclaration = true;
 			mainProjectInstance = new MSBuildProjectInstance (this);
-			UseMSBuildEngine = true;
 			IsNewProject = true;
 			initialWhitespace = format.NewLine;
 			StartInnerWhitespace = format.NewLine;

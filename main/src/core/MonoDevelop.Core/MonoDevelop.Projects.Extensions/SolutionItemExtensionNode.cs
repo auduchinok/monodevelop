@@ -52,7 +52,8 @@ namespace MonoDevelop.Projects.Extensions
 		string migrationHandler;
 
 		[NodeAttribute ("msbuildSupport")]
-		public MSBuildSupport MSBuildSupport { get; set; }
+		[Obsolete]
+		public MSBuildSupport MSBuildSupport { get; set; } = MSBuildSupport.Supported;
 
 		ProjectMigrationHandler handler;
 
@@ -61,11 +62,6 @@ namespace MonoDevelop.Projects.Extensions
 
 		[NodeAttribute ("language", Description = "Language name of the extension (C#/F# etc.)")]
  		public string LanguageName { get; set; }
-
-		public SolutionItemExtensionNode ()
-		{
-			MSBuildSupport = MSBuildSupport.Supported;
-		}
 
 		public bool IsMigrationRequired {
 			get { return migrationRequired; }

@@ -49,6 +49,7 @@ using MonoDevelop.Core.Collections;
 using System.Threading.Tasks;
 using MonoDevelop.Projects.MSBuild;
 using System.Collections.Immutable;
+using System.Threading;
 
 namespace MonoDevelop.Projects
 {
@@ -370,12 +371,19 @@ namespace MonoDevelop.Projects
 		/// <param name='configuration'>
 		/// Configuration for which to get the referenced items
 		/// </param>
+		public Task<List<SolutionItem>> GetReferencedItems (ConfigurationSelector configuration, CancellationToken token)
+		{
+			return ItemExtension.OnGetReferencedItems (configuration, token);
+		}
+
+		[Obsolete ("Use the overload that returns a Task")]
 		public IEnumerable<SolutionItem> GetReferencedItems (ConfigurationSelector configuration)
 		{
 			return ItemExtension.OnGetReferencedItems (configuration);
 		}
 
-		public IEnumerable<T>  GetReferencedExtensionsFromFlavor<T> (string projectTypeName, ConfigurationSelector configuration) where T : ProjectExtension
+		[Obsolete("This is extension-specific functionality that should not be in core")]
+		public IEnumerable<T> GetReferencedExtensionsFromFlavor<T> (string projectTypeName, ConfigurationSelector configuration) where T : ProjectExtension
 		{
 			var extensions = new List<T> ();
 			var projects = ParentSolution.GetAllProjects ();
@@ -393,9 +401,15 @@ namespace MonoDevelop.Projects
 			return extensions;
 		}
 
+		[Obsolete("Use the overload that returns a Task")]
 		protected virtual IEnumerable<SolutionItem> OnGetReferencedItems (ConfigurationSelector configuration)
 		{
 			return dependencies;
+		}
+
+		protected virtual Task<List<SolutionItem>> OnGetReferencedItems (ConfigurationSelector configuration, CancellationToken token)
+		{
+			return Task.FromResult (dependencies.ToList ());
 		}
 
 		/// <summary>
@@ -543,6 +557,7 @@ namespace MonoDevelop.Projects
 			return ItemExtension.OnNeedsBuilding (configuration);
 		}
 
+		[Obsolete ("This method will be removed in future releases")]
 		internal protected virtual bool OnGetNeedsBuilding (ConfigurationSelector configuration)
 		{
 			return false;
@@ -554,6 +569,7 @@ namespace MonoDevelop.Projects
 			OnSetNeedsBuilding (configuration);
 		}
 
+		[Obsolete ("This method will be removed in future releases")]
 		protected virtual void OnSetNeedsBuilding (ConfigurationSelector configuration)
 		{
 		}
@@ -618,7 +634,7 @@ namespace MonoDevelop.Projects
 
 				var referenced = new List<SolutionItem> ();
 				var visited = new Set<SolutionItem> ();
-				GetBuildableReferencedItems (visited, referenced, this, solutionConfiguration);
+				await GetBuildableReferencedItems (visited, referenced, this, solutionConfiguration, monitor.CancellationToken);
 
 				var sortedReferenced = TopologicalSort (referenced, solutionConfiguration);
 
@@ -683,23 +699,15 @@ namespace MonoDevelop.Projects
 			return Task.FromResult (BuildResult.CreateSuccess ());
 		}
 
-		void GetBuildableReferencedItems (Set<SolutionItem> visited, List<SolutionItem> referenced, SolutionItem item, ConfigurationSelector configuration)
+		async Task GetBuildableReferencedItems (Set<SolutionItem> visited, List<SolutionItem> referenced, SolutionItem item, ConfigurationSelector configuration, CancellationToken token)
 		{
 			if (!visited.Add(item))
 				return;
 
 			referenced.Add (item);
 
-			foreach (var ritem in item.GetReferencedItems (configuration))
-				GetBuildableReferencedItems (visited, referenced, ritem, configuration);
-		}
-
-		internal bool ContainsReferences (HashSet<SolutionItem> items, ConfigurationSelector conf)
-		{
-			foreach (var it in GetReferencedItems (conf))
-				if (items.Contains (it))
-					return true;
-			return false;
+			foreach (var ritem in await item.GetReferencedItems (configuration, token))
+				await GetBuildableReferencedItems (visited, referenced, ritem, configuration, token);
 		}
 
 		/// <summary>
@@ -1379,16 +1387,6 @@ namespace MonoDevelop.Projects
 			return source;
 		}
 
-		internal protected override DateTime OnGetLastBuildTime (ConfigurationSelector configuration)
-		{
-			return ItemExtension.OnGetLastBuildTime (configuration);
-		}
-
-		DateTime DoGetLastBuildTime (ConfigurationSelector configuration)
-		{
-			return base.OnGetLastBuildTime (configuration);
-		}
-
 		protected virtual void OnDefaultConfigurationChanged (ConfigurationEventArgs args)
 		{
 			ItemExtension.OnDefaultConfigurationChanged (args);
@@ -1511,9 +1509,15 @@ namespace MonoDevelop.Projects
 				return Item.OnGetExecutionDependencies ();
 			}
 
+			[Obsolete("Use the overload that returns a Task")]
 			internal protected override IEnumerable<SolutionItem> OnGetReferencedItems (ConfigurationSelector configuration)
 			{
 				return Item.OnGetReferencedItems (configuration);
+			}
+
+			internal protected override Task<List<SolutionItem>> OnGetReferencedItems (ConfigurationSelector configuration, CancellationToken token)
+			{
+				return Item.OnGetReferencedItems (configuration, token);
 			}
 
 			internal protected override void OnSetFormat (MSBuildFileFormat format)
@@ -1534,11 +1538,6 @@ namespace MonoDevelop.Projects
 			internal protected override SolutionItemConfiguration OnCreateConfiguration (string id, ConfigurationKind kind)
 			{
 				return Item.OnCreateConfiguration (id, kind);
-			}
-
-			internal protected override DateTime OnGetLastBuildTime (ConfigurationSelector configuration)
-			{
-				return Item.DoGetLastBuildTime (configuration);
 			}
 
 			internal protected override Task OnLoad (ProgressMonitor monitor)
@@ -1656,11 +1655,6 @@ namespace MonoDevelop.Projects
 			internal protected override Task<BuildResult> OnClean (ProgressMonitor monitor, ConfigurationSelector configuration, OperationContext buildSession)
 			{
 				return Item.OnClean (monitor, configuration, buildSession);
-			}
-
-			internal protected override bool OnNeedsBuilding (ConfigurationSelector configuration)
-			{
-				return Item.OnGetNeedsBuilding (configuration);
 			}
 
 			internal protected override void OnWriteSolutionData (ProgressMonitor monitor, SlnPropertySet properties)

@@ -2,7 +2,9 @@
 using System;
 using System.IO;
 using MonoDevelop.Projects;
+using MonoDevelop.Projects.MSBuild;
 using MonoDevelop.Core;
+using System.Linq;
 
 namespace MonoDevelop.Deployment
 {
@@ -24,9 +26,17 @@ namespace MonoDevelop.Deployment
 			// Add the compiled output files
 			
 			ProjectConfiguration pconf = (ProjectConfiguration) project.GetConfiguration (configuration);
-			FilePath outDir = pconf.OutputDirectory;
-			foreach (FilePath file in project.GetOutputFiles (configuration)) {
-				deployFiles.Add (new DeployFile (project, file, file.ToRelative (outDir), TargetDirectory.ProgramFiles));
+
+			var evalCtx = new TargetEvaluationContext ();
+			evalCtx.ItemsToEvaluate.Add ("AllPublishItemsFullPathWithTargetPath");
+
+			var result = project.RunTarget (null, "GetCopyToPublishDirectoryItems", configuration, evalCtx).Result;
+			foreach (var item in result.Items) {
+				if (item.Name == "AllPublishItemsFullPathWithTargetPath") {
+					var fromPath = MSBuildProjectService.FromMSBuildPath (project.ItemDirectory, item.Include);
+					var toPath = item.Metadata.GetPathValue ("TargetPath", relativeToPath: pconf.OutputDirectory);
+					deployFiles.Add (new DeployFile (project, fromPath, toPath, TargetDirectory.ProgramFiles));
+				}
 			}
 			
 //			FilePath outputFile = project.GetOutputFileName (configuration);
@@ -45,11 +55,7 @@ namespace MonoDevelop.Deployment
 					deployFiles.Add (dp);
 				}
 			}
-			
-			foreach (FileCopySet.Item item in project.GetSupportFileList (configuration)) {
-				 deployFiles.Add (new DeployFile (project, item.Src, item.Target, TargetDirectory.ProgramFiles));
-			}
-			
+
 			return deployFiles;
 		}
 	}

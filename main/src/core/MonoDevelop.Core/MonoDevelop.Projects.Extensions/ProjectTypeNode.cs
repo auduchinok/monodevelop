@@ -37,12 +37,8 @@ namespace MonoDevelop.Projects.Extensions
 	public class ProjectTypeNode: SolutionItemTypeNode
 	{
 		[NodeAttribute ("msbuildSupport")]
-		public MSBuildSupport MSBuildSupport { get; set; }
-
-		public ProjectTypeNode ()
-		{
-			MSBuildSupport = MSBuildSupport.Supported;
-		}
+		[Obsolete]
+		public MSBuildSupport MSBuildSupport { get; set; } = MSBuildSupport.Supported;
 
 		public override async Task<SolutionItem> CreateSolutionItem (ProgressMonitor monitor, SolutionLoadContext ctx, string fileName)
 		{
@@ -65,9 +61,6 @@ namespace MonoDevelop.Projects.Extensions
 					// The project has a flavor that's not supported. Return a fake project (if possible).
 					return MSBuildProjectService.CreateUnknownSolutionItem (monitor, fileName, Guid, unsupporedFlavor, null);
 				}
-
-				if (MSBuildSupport == MSBuildSupport.NotSupported || MSBuildProjectService.GetMSBuildSupportForFlavors (p.ProjectTypeGuids) == MSBuildSupport.NotSupported)
-					p.UseMSBuildEngine = false;
 
 				// Evaluate the project now. If evaluation fails an exception will be thrown, and when that
 				// happens the solution will create a placeholder project.

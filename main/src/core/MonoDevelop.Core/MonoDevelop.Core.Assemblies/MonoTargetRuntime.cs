@@ -182,19 +182,16 @@ namespace MonoDevelop.Core.Assemblies
 				return path;
 			}
 
-			// ToolsVersion >= 15.0 is supported only by msbuild, so, just
-			// return null here
 			return null;
 		}
-		
+
 		public override string GetMSBuildToolsPath (string toolsVersion)
 		{
 			var path = Path.Combine (monoDir, "msbuild", toolsVersion, "bin");
-			if (Directory.Exists (path))
+			if (Directory.Exists (path)) {
 				return path;
+			}
 
-			// ToolsVersion >= 15.0 is supported only by msbuild, so, just
-			// return null here
 			return null;
 		}
 

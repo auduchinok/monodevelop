@@ -510,19 +510,6 @@ namespace MonoDevelop.Projects.MSBuild
 			return copy ?? types;
 		}
 
-		internal static MSBuildSupport GetMSBuildSupportForFlavors (IEnumerable<string> flavorGuids)
-		{
-			foreach (var fid in flavorGuids) {
-				var node = WorkspaceObject.GetModelExtensions (null).OfType<SolutionItemExtensionNode> ().FirstOrDefault (n => n.Guid != null && n.Guid.Equals (fid, StringComparison.InvariantCultureIgnoreCase));
-				if (node != null) {
-					if (node.MSBuildSupport != MSBuildSupport.Supported)
-						return node.MSBuildSupport;
-				} else if (!IsKnownTypeGuid (fid))
-					throw new UnknownSolutionItemTypeException (fid);
-			}
-			return MSBuildSupport.Supported;
-		}
-
 		internal static List<SolutionItemExtensionNode> GetMigrableFlavors (string[] flavorGuids)
 		{
 			var list = new List<SolutionItemExtensionNode> ();
@@ -706,21 +693,6 @@ namespace MonoDevelop.Projects.MSBuild
 					return node.Guid;
 			}
 			return GenericItemGuid;
-		}
-
-		internal static MSBuildSupport GetMSBuildSupportForProject (Project project)
-		{
-			if (project is UnknownProject)
-				return MSBuildSupport.NotSupported;
-			
-			foreach (var node in GetItemTypeNodes ().OfType<ProjectTypeNode> ()) {
-				if (node.Guid.Equals (project.TypeGuid, StringComparison.OrdinalIgnoreCase)) {
-					if (node.MSBuildSupport != MSBuildSupport.Supported)
-						return node.MSBuildSupport;
-					return GetMSBuildSupportForFlavors (project.FlavorGuids);
-				}
-			}
-			return MSBuildSupport.NotSupported;
 		}
 
 		public static void RegisterGenericProjectType (string projectId, Type type)
@@ -1503,7 +1475,6 @@ namespace MonoDevelop.Projects.MSBuild
 		{
 			Guid = MSBuildProjectService.GenericItemGuid;
 			Extension = "mdproj";
-			MSBuildSupport = MSBuildSupport.NotSupported;
 			TypeAlias = "GenericProject";
 		}
 

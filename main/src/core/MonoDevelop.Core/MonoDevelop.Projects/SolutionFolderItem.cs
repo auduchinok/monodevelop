@@ -340,6 +340,7 @@ namespace MonoDevelop.Projects
 		/// <param name='configuration'>
 		/// Configuration for which to get the last build time.
 		/// </param>
+		[Obsolete("Use MSBuild")]
 		public DateTime GetLastBuildTime (ConfigurationSelector configuration)
 		{
 			return OnGetLastBuildTime (configuration);
@@ -487,6 +488,7 @@ namespace MonoDevelop.Projects
 		/// <param name='configuration'>
 		/// Configuration for which to get the last build time.
 		/// </param>
+		[Obsolete]
 		internal protected virtual DateTime OnGetLastBuildTime (ConfigurationSelector configuration)
 		{
 			return DateTime.MinValue;

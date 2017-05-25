@@ -36,6 +36,7 @@ using System.Threading.Tasks;
 using MonoDevelop.Ide.TypeSystem;
 using MonoDevelop.Projects.Policies;
 using MonoDevelop.Ide.CustomTools;
+using System.Threading;
 
 namespace MonoDevelop.Projects
 {
@@ -541,7 +542,7 @@ namespace MonoDevelop.Projects
 			string solFile = Util.GetSampleProject ("portable-library", "portable-library.sln");
 			Solution sol = (Solution) await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 			var p = (DotNetProject) sol.FindProjectByName ("PortableLibrary");
-			var refs = (await p.GetReferencedAssemblies (p.Configurations [0].Selector)).Select (r => r.FilePath.FileName).ToArray ();
+			var refs = (await p.GetReferences (p.Configurations [0].Selector)).Select (r => r.FilePath.FileName).ToArray ();
 			sol.Dispose ();
 		}
 
@@ -555,7 +556,7 @@ namespace MonoDevelop.Projects
 			var projectOptions = doc.CreateElement ("Options");
 			var p = (GenericProject) Services.ProjectService.CreateProject ("GenericProject", info, projectOptions);
 			Assert.AreEqual ("Default", p.Configurations [0].Name);
-			Assert.AreEqual (MSBuildSupport.NotSupported, p.MSBuildEngineSupport);
+			Assert.IsFalse (p.SupportsBuild ());
 			p.Dispose ();
 		}
 
@@ -621,7 +622,7 @@ namespace MonoDevelop.Projects
 			var p = (DotNetProject) sol.Items [0];
 			p.References.Add (ProjectReference.CreateAssemblyReference ("System.Xml.Linq"));
 
-			var refs = (await p.GetReferencedAssemblies (ConfigurationSelector.Default)).ToArray ();
+			var refs = (await p.GetReferences (ConfigurationSelector.Default)).ToArray ();
 
 			Assert.IsTrue (refs.Any (r => r.FilePath.FileName == "System.Xml.Linq.dll"));
 			sol.Dispose ();
@@ -638,25 +639,15 @@ namespace MonoDevelop.Projects
 			var p = (DotNetProject) sol.Items [0];
 
 			// This will force the loading of the builder
-			(await p.GetReferencedAssemblies (ConfigurationSelector.Default)).ToArray ();
+			(await p.GetReferences (ConfigurationSelector.Default)).ToArray ();
 
 			p.References.Add (ProjectReference.CreateAssemblyReference ("System.Xml.Linq"));
 
-			var refs = (await p.GetReferencedAssemblies (ConfigurationSelector.Default)).ToArray ();
+			var refs = (await p.GetReferences (ConfigurationSelector.Default)).ToArray ();
 
 			// Check that the in-memory project data is used when the builder is loaded for the first time.
 			Assert.IsTrue (refs.Any (r => r.FilePath.FileName == "System.Xml.Linq.dll"));
 
-			sol.Dispose ();
-		}
-
-		[Test]
-		public async Task DefaultMSBuildSupport ()
-		{
-			string solFile = Util.GetSampleProject ("console-project", "ConsoleProject.sln");
-			Solution sol = (Solution) await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
-			var p = (DotNetProject) sol.Items [0];
-			Assert.AreEqual (MSBuildSupport.Supported, p.MSBuildEngineSupport);
 			sol.Dispose ();
 		}
 
@@ -819,8 +810,8 @@ namespace MonoDevelop.Projects
 			Solution sol = (Solution)await Services.ProjectService.ReadWorkspaceItem (Util.GetMonitor (), solFile);
 			var p = sol.Items.FirstOrDefault (pr => pr.Name == "conditional-project-reference");
 
-			Assert.AreEqual (2, p.GetReferencedItems ((SolutionConfigurationSelector)"DebugWin").Count ());
-			Assert.AreEqual (1, p.GetReferencedItems ((SolutionConfigurationSelector)"Debug").Count ());
+			Assert.AreEqual (2, (await p.GetReferencedItems ((SolutionConfigurationSelector)"DebugWin", CancellationToken.None)).Count);
+			Assert.AreEqual (1, (await p.GetReferencedItems ((SolutionConfigurationSelector)"Debug", CancellationToken.None)).Count);
 
 			//We have intentional compile error in windowsLib project
 			var res = await p.Build (Util.GetMonitor (), (SolutionConfigurationSelector)"DebugWin", true);
@@ -1037,30 +1028,30 @@ namespace MonoDevelop.Projects
 
 			var cs = new SolutionConfigurationSelector ("Debug");
 
-			Assert.IsTrue (app.FastCheckNeedsBuild (cs));
-			Assert.IsTrue (lib.FastCheckNeedsBuild (cs));
+			Assert.IsTrue (await app.FastCheckNeedsBuild (cs, CancellationToken.None));
+			Assert.IsTrue (await lib.FastCheckNeedsBuild (cs, CancellationToken.None));
 
 			var res = await sol.Build (Util.GetMonitor (), cs);
 			Assert.IsFalse (res.HasErrors);
-			Assert.IsFalse (app.FastCheckNeedsBuild (cs));
-			Assert.IsFalse (lib.FastCheckNeedsBuild (cs));
+			Assert.IsFalse (await app.FastCheckNeedsBuild (cs, CancellationToken.None));
+			Assert.IsFalse (await lib.FastCheckNeedsBuild (cs, CancellationToken.None));
 
 			var myClass = sol.ItemDirectory.Combine ("MyClass.cs");
 			File.WriteAllText (myClass, "public class MyClass { public const string Message = \"Bye\" ; }");
 			FileService.NotifyFileChanged (myClass);
 
-			Assert.IsTrue (app.FastCheckNeedsBuild (cs));
-			Assert.IsTrue (lib.FastCheckNeedsBuild (cs));
+			Assert.IsTrue (await app.FastCheckNeedsBuild (cs, CancellationToken.None));
+			Assert.IsTrue (await lib.FastCheckNeedsBuild (cs, CancellationToken.None));
 
 			res = await lib.Build (Util.GetMonitor (), cs);
 			Assert.IsFalse (res.HasErrors);
-			Assert.IsFalse (lib.FastCheckNeedsBuild (cs));
-			Assert.IsTrue (app.FastCheckNeedsBuild (cs));
+			Assert.IsFalse (await lib.FastCheckNeedsBuild (cs, CancellationToken.None));
+			Assert.IsTrue (await app.FastCheckNeedsBuild (cs, CancellationToken.None));
 
 			res = await app.Build (Util.GetMonitor (), cs);
 			Assert.IsFalse (res.HasErrors);
-			Assert.IsFalse (lib.FastCheckNeedsBuild (cs));
-			Assert.IsFalse (app.FastCheckNeedsBuild (cs));
+			Assert.IsFalse (await lib.FastCheckNeedsBuild (cs, CancellationToken.None));
+			Assert.IsFalse (await app.FastCheckNeedsBuild (cs, CancellationToken.None));
 
 			sol.Dispose ();
 		}

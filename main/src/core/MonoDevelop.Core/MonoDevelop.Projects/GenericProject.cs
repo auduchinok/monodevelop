@@ -39,7 +39,7 @@ namespace MonoDevelop.Projects
 		public GenericProject ()
 		{
 		}
-		
+
 		public GenericProject (ProjectCreateInformation info, XmlElement projectOptions)
 		{
 			Configurations.Add (CreateConfiguration ("Default"));

@@ -29,7 +29,7 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.Projects
 {
-	public class AssemblyReference
+	public sealed class AssemblyReference
 	{
 		Dictionary<string, string> metadata;
 
