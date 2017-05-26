@@ -636,7 +636,7 @@ namespace MonoDevelop.Projects
 				var visited = new Set<SolutionItem> ();
 				await GetBuildableReferencedItems (visited, referenced, this, solutionConfiguration, monitor.CancellationToken);
 
-				var sortedReferenced = TopologicalSort (referenced, solutionConfiguration);
+				var sortedReferenced = await TopologicalSort (referenced, solutionConfiguration, monitor.CancellationToken);
 
 				SolutionItemConfiguration iconf = GetConfiguration (solutionConfiguration);
 				string confName = iconf != null ? iconf.Id : solutionConfiguration.ToString ();
@@ -784,6 +784,12 @@ namespace MonoDevelop.Projects
 			return Task.FromResult (BuildResult.CreateSuccess ());
 		}
 
+		[Obsolete ("This method will be removed in future releases")]
+		public static ReadOnlyCollection<T> TopologicalSort<T> (IEnumerable<T> items, ConfigurationSelector configuration) where T : SolutionItem
+		{
+			return TopologicalSort (items, configuration, CancellationToken.None).Result;
+		}
+
 		/// <summary>
 		/// Sorts a collection of solution items, taking into account the dependencies between them
 		/// </summary>
@@ -800,7 +806,7 @@ namespace MonoDevelop.Projects
 		/// This methods sorts a collection of items, ensuring that every item is placed after all the items
 		/// on which it depends.
 		/// </remarks>
-		public static ReadOnlyCollection<T> TopologicalSort<T> (IEnumerable<T> items, ConfigurationSelector configuration) where T: SolutionItem
+		internal static async Task<ReadOnlyCollection<T>> TopologicalSort<T> (IEnumerable<T> items, ConfigurationSelector configuration, CancellationToken token) where T: SolutionItem
 		{
 			IList<T> allItems;
 			allItems = items as IList<T>;
@@ -812,12 +818,12 @@ namespace MonoDevelop.Projects
 			bool[] triedToInsert = new bool[allItems.Count];
 			for (int i = 0; i < allItems.Count; ++i) {
 				if (!inserted[i])
-					Insert<T> (i, allItems, sortedEntries, inserted, triedToInsert, configuration);
+					await Insert (i, allItems, sortedEntries, inserted, triedToInsert, configuration, token);
 			}
 			return sortedEntries.AsReadOnly ();
 		}
 
-		static void Insert<T> (int index, IList<T> allItems, List<T> sortedItems, bool[] inserted, bool[] triedToInsert, ConfigurationSelector solutionConfiguration) where T: SolutionItem
+		static async Task Insert<T> (int index, IList<T> allItems, List<T> sortedItems, bool[] inserted, bool[] triedToInsert, ConfigurationSelector solutionConfiguration, CancellationToken token) where T: SolutionItem
 		{
 			if (triedToInsert[index]) {
 				throw new CyclicDependencyException ();
@@ -825,12 +831,12 @@ namespace MonoDevelop.Projects
 			triedToInsert[index] = true;
 			var insertItem = allItems[index];
 
-			foreach (var reference in insertItem.GetReferencedItems (solutionConfiguration)) {
+			foreach (var reference in await insertItem.GetReferencedItems (solutionConfiguration, token)) {
 				for (int j=0; j < allItems.Count; ++j) {
 					SolutionFolderItem checkItem = allItems[j];
 					if (reference == checkItem) {
 						if (!inserted[j])
-							Insert (j, allItems, sortedItems, inserted, triedToInsert, solutionConfiguration);
+							await Insert (j, allItems, sortedItems, inserted, triedToInsert, solutionConfiguration, token);
 						break;
 					}
 				}

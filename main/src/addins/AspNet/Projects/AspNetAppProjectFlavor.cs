@@ -154,7 +154,6 @@ namespace MonoDevelop.AspNet.Projects
 				BaseDirectory = Project.BaseDirectory,
 				TargetRuntime = Project.TargetRuntime,
 				TargetFramework = Project.TargetFramework,
-				UserAssemblyPaths = Project.GetUserAssemblyPaths (config),
 				EnvironmentVariables = configuration.EnvironmentVariables,
 			};
 		}
@@ -170,8 +169,10 @@ namespace MonoDevelop.AspNet.Projects
 			//check XSP is available
 
 			var cfg = GetConfiguration (configuration);
-			var cmd = CreateExecutionCommand (configuration, cfg);
+			var cmd = (AspNetExecutionCommand) CreateExecutionCommand (configuration, cfg);
 			var browserExcTarget = context.ExecutionTarget as BrowserExecutionTarget;
+
+			cmd.UserAssemblyPaths = await Project.GetUserAssemblyPaths (configuration, monitor.CancellationToken);
 
 			OperationConsole console = null;
 

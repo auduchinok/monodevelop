@@ -420,7 +420,8 @@ namespace MonoDevelop.Projects
 		{
 			return GetAllItems<SolutionFolderItem> ();
 		}
-		
+
+		[Obsolete ("This method will be removed in future releases")]
 		public ReadOnlyCollection<T> GetAllItemsWithTopologicalSort<T> (ConfigurationSelector configuration) where T: SolutionItem
 		{
 			List<T> list = new List<T> ();
@@ -434,9 +435,10 @@ namespace MonoDevelop.Projects
 			GetAllItems<Project> (list, this);
 			return list.AsReadOnly ();
 		}
-		
+
 		// The projects are returned in the order
 		// they should be compiled, acording to their references.
+		[Obsolete ("This method will be removed in future releases")]
 		public ReadOnlyCollection<Project> GetAllProjectsWithTopologicalSort (ConfigurationSelector configuration)
 		{
 			List<Project> list = new List<Project> ();
@@ -468,6 +470,11 @@ namespace MonoDevelop.Projects
 			return GetAllBuildableEntries (configuration, topologicalSort, includeExternalReferences, CancellationToken.None).Result;
 		}
 
+		public Task<ReadOnlyCollection<SolutionItem>> GetAllBuildableEntries (ConfigurationSelector configuration, CancellationToken token)
+		{
+			return GetAllBuildableEntries (configuration, false, false, token);
+		}
+
 		public async Task<ReadOnlyCollection<SolutionItem>> GetAllBuildableEntries (
 			ConfigurationSelector configuration,
 			bool topologicalSort,
@@ -477,7 +484,7 @@ namespace MonoDevelop.Projects
 			var list = new List<SolutionItem> ();
 			await GetAllBuildableEntries (list, configuration, includeExternalReferences, token);
 			if (topologicalSort)
-				return SolutionItem.TopologicalSort (list, configuration);
+				return await SolutionItem.TopologicalSort (list, configuration, token);
 			else
 				return list.AsReadOnly ();
 		}

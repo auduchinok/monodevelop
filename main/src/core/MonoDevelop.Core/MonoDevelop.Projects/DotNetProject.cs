@@ -874,13 +874,20 @@ namespace MonoDevelop.Projects
 			return exeFile.ChangeExtension (".pdb");
 		}
 
+		[Obsolete ("Use the overload that returns a Task")]
 		public IList<string> GetUserAssemblyPaths (ConfigurationSelector configuration)
+		{
+			return GetUserAssemblyPaths (configuration, CancellationToken.None).Result;;
+		}
+
+		public async Task<IList<string>> GetUserAssemblyPaths (ConfigurationSelector configuration, CancellationToken token)
 		{
 			if (ParentSolution == null)
 				return null;
 			//return all projects in the sln in case some are loaded dynamically
 			//FIXME: should we do this for the whole workspace?
-			return ParentSolution.RootFolder.GetAllBuildableEntries (configuration).OfType<DotNetProject> ()
+			var entries = await ParentSolution.RootFolder.GetAllBuildableEntries (configuration, token).ConfigureAwait (false);
+			return entries.OfType<DotNetProject> ()
 				.Select (d => (string) d.GetOutputFileName (configuration))
 				.Where (d => !string.IsNullOrEmpty (d)).ToList ();
 		}
@@ -1410,7 +1417,7 @@ namespace MonoDevelop.Projects
 
 			var dotNetExecutionCommand = executionCommand as DotNetExecutionCommand;
 			if (dotNetExecutionCommand != null) {
-				dotNetExecutionCommand.UserAssemblyPaths = GetUserAssemblyPaths (configuration);
+				dotNetExecutionCommand.UserAssemblyPaths = await GetUserAssemblyPaths (configuration, monitor.CancellationToken);
 				externalConsole = dotNetExecutionCommand.ExternalConsole;
 				pauseConsole = dotNetExecutionCommand.PauseConsoleOutput;
 			}
