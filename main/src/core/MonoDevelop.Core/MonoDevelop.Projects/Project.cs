@@ -1171,9 +1171,15 @@ namespace MonoDevelop.Projects
 			public DirectorySnapshot (FilePath filePath)
 			{
 				this.filePath = filePath;
-				var files = Directory.GetFiles (filePath, "*", SearchOption.AllDirectories);
-				foreach (var f in files) {
-					fileTimes [f] = File.GetLastWriteTime (f); 
+				try {
+					if (Directory.Exists (filePath)) {
+						var files = Directory.GetFiles (filePath, "*", SearchOption.AllDirectories);
+						foreach (var f in files) {
+							fileTimes [f] = File.GetLastWriteTime (f);
+						}
+					}
+				} catch (Exception ex) {
+					LoggingService.LogError ("Error in file change monitoring", ex);
 				}
 			}
 
@@ -1184,13 +1190,17 @@ namespace MonoDevelop.Projects
 					var files = Directory.GetFiles (filePath, "*", SearchOption.AllDirectories);
 					foreach (var f in files) {
 						if (fileTimes.TryGetValue (f, out DateTime old)) {
+							fileTimes.Remove (f);
 							if (old != File.GetLastWriteTime (f)) {
 								FileService.NotifyFileChanged (f);
 							}
-						} else {
-							FileService.NotifyFileRemoved (f);
 						}
 					}
+					if (fileTimes.Count > 0) {
+						FileService.NotifyFilesRemoved (fileTimes.Keys);
+					}
+				} catch (Exception ex) {
+					LoggingService.LogError ("Error in file change monitoring", ex);
 				} finally {
 					FileService.ThawEvents ();
 				}
@@ -3746,6 +3756,17 @@ namespace MonoDevelop.Projects
 			internal protected override void OnItemsRemoved (IEnumerable<ProjectItem> objs)
 			{
 				Project.OnItemsRemoved (objs);
+			}
+
+			[Obsolete]
+			internal protected override bool OnFastCheckNeedsBuild (ConfigurationSelector configuration)
+			{
+				return Project.OnFastCheckNeedsBuild (configuration);
+			}
+
+			internal protected override Task<bool> OnFastCheckNeedsBuild (ConfigurationSelector configuration, CancellationToken token)
+			{
+				return Project.OnFastCheckNeedsBuild (configuration, token);
 			}
 		}
 	}

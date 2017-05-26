@@ -791,10 +791,6 @@ namespace MonoDevelop.Projects
 
 		internal protected virtual async Task<List<AssemblyReference>> OnGetReferences (ConfigurationSelector configuration, CancellationToken token)
 		{
-			if (ParentSolution == null) {
-				return new List<AssemblyReference> ();
-			}
-
 			RemoteProjectBuilder builder = await GetProjectBuilder ();
 			try {
 				var configs = await GetConfigurations (configuration, false);

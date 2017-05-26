@@ -142,6 +142,7 @@ namespace MonoDevelop.Projects
 			return next.OnGetSupportsFramework (framework);
 		}
 
+		[Obsolete("Use MSBuild")]
 		internal protected virtual Task<BuildResult> OnCompile (ProgressMonitor monitor, BuildData buildData)
 		{
 			return next.OnCompile (monitor, buildData);
