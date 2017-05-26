@@ -711,9 +711,10 @@ namespace MonoDevelop.Projects
 
 			var app = sol.GetAllItems<DotNetProject> ().FirstOrDefault (it => it.FileName.FileName == "console-with-libs.csproj");
 
-			// The console app references an unsupported library. The build of the project should fail.
+			// The console app references two unsupported libraries. The build of the project should fail.
 			res = await app.Build (Util.GetMonitor (), ConfigurationSelector.Default, true);
-			Assert.IsTrue (res.ErrorCount == 1);
+			//both libraries have errors due to the parallel build
+			Assert.IsTrue (res.ErrorCount == 2);
 
 			// A solution build should succeed if it has unbuildable projects but those projects are not referenced by buildable projects
 			app.References.Clear ();

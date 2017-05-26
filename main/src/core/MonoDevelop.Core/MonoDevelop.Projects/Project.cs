@@ -1720,7 +1720,7 @@ namespace MonoDevelop.Projects
 		[Obsolete("Use the overload that returns a task")]
 		protected virtual bool OnFastCheckNeedsBuild (ConfigurationSelector configuration)
 		{
-			return true;
+			return false;
 		}
 
 		protected virtual async Task<bool> OnFastCheckNeedsBuild (ConfigurationSelector configuration, CancellationToken token)
@@ -1737,7 +1737,7 @@ namespace MonoDevelop.Projects
 			if (ProjectExtension.OnFastCheckNeedsBuild (configuration)) {
 				return true;
 			}
-#pragma warning resture 618
+#pragma warning restore 618
 
 			// Shouldn't need to build, but if a dependency was changed since this project build flag was reset,
 			// the project needs to be rebuilt
