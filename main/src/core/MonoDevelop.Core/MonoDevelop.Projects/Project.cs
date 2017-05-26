@@ -1563,6 +1563,9 @@ namespace MonoDevelop.Projects
 			CleanupProjectBuilder ();
 		}
 
+		[Obsolete ("MSBuild is always required")]
+		internal protected bool RequiresMicrosoftBuild { get { return true; } set {} }
+
 		#endregion
 
 		/// <summary>
@@ -1706,7 +1709,7 @@ namespace MonoDevelop.Projects
 		[Obsolete ("Use the overload that returns a task")]
 		public bool FastCheckNeedsBuild (ConfigurationSelector configuration)
 		{
-			return ProjectExtension.OnFastCheckNeedsBuild (configuration);
+			return FastCheckNeedsBuild (configuration, CancellationToken.None).Result;
 		}
 
 		public Task<bool> FastCheckNeedsBuild (ConfigurationSelector configuration, CancellationToken token)
@@ -1724,9 +1727,17 @@ namespace MonoDevelop.Projects
 		{
 			if (disableFastUpToDateCheck || fastUpToDateCheckGoodConfig == null)
 				return true;
+
 			var cfg = GetConfiguration (configuration);
 			if (cfg == null || cfg.Id != fastUpToDateCheckGoodConfig)
 				return true;
+
+			//chain to the obsoleted version
+#pragma warning disable 618
+			if (ProjectExtension.OnFastCheckNeedsBuild (configuration)) {
+				return true;
+			}
+#pragma warning resture 618
 
 			// Shouldn't need to build, but if a dependency was changed since this project build flag was reset,
 			// the project needs to be rebuilt

@@ -66,8 +66,7 @@ namespace MonoDevelop.Packaging
 			var result = new BuildResult ();
 
 			// Build the project and any dependencies first.
-			var items = await project.GetReferencedItems (configuration, monitor.CancellationToken);
-			if (buildReferencedTargets && items.Any ()) {
+			if (buildReferencedTargets && (await project.GetReferencedItems (configuration, monitor.CancellationToken)).Any ()) {
 				result = await project.Build (monitor, configuration, buildReferencedTargets, operationContext);
 				if (result.Failed)
 					return result;

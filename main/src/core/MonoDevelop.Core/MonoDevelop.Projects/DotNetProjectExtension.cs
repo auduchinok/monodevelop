@@ -77,13 +77,13 @@ namespace MonoDevelop.Projects
 			return next.OnGetReferences (configuration, token);
 		}
 
-		[Obsolete ("Use OnGetReferences")]
+		[Obsolete ("Use MSBuild")]
 		internal protected virtual Task<List<AssemblyReference>> OnGetReferencedAssemblies (ConfigurationSelector configuration)
 		{
 			return next.OnGetReferencedAssemblies (configuration);
 		}
 
-		[Obsolete ("Use OnGetReferences")]
+		[Obsolete ("Use MSBuild")]
 		internal protected virtual IEnumerable<DotNetProject> OnGetReferencedAssemblyProjects (ConfigurationSelector configuration)
 		{
 			return next.OnGetReferencedAssemblyProjects (configuration);

@@ -46,8 +46,6 @@ namespace MonoDevelop.Projects.MSBuild
 {
 	public static class MSBuildProjectService
 	{
-		public static readonly string ToolsVersion = "15.0";
-
 		internal const string ItemTypesExtensionPath = "/MonoDevelop/ProjectModel/MSBuildItemTypes";
 		internal const string ImportRedirectsExtensionPath = "/MonoDevelop/ProjectModel/MSBuildImportRedirects";
 		internal const string GlobalPropertyProvidersExtensionPath = "/MonoDevelop/ProjectModel/MSBuildGlobalPropertyProviders";
@@ -226,7 +224,7 @@ namespace MonoDevelop.Projects.MSBuild
 		/// </summary>
 		internal static string FindSdkPath (TargetRuntime runtime, IEnumerable<string> sdks)
 		{
-			string binDir = runtime.GetMSBuildBinPath (ToolsVersion);
+			GetNewestInstalledToolsVersion (runtime, out string binDir);
 
 			// Look for SDKs in the default SDKs path first, and then in the fallback paths
 			var defaultSdksPath = Path.Combine (binDir, "Sdks");
@@ -252,7 +250,7 @@ namespace MonoDevelop.Projects.MSBuild
 				list = new List<ImportSearchPathExtensionNode> ();
 				defaultImportSearchPaths [runtime] = list;
 
-				string binDir = runtime.GetMSBuildBinPath (ToolsVersion);
+				GetNewestInstalledToolsVersion (runtime, out string binDir);
 
 				var configFileName = Platform.IsWindows ? "MSBuild.exe.config" : "MSBuild.dll.config";
 				var configFile = Path.Combine (binDir, configFileName);
@@ -990,6 +988,16 @@ namespace MonoDevelop.Projects.MSBuild
 			return true;
 		}
 
+		static string GetNewestInstalledToolsVersion (TargetRuntime runtime, out string binDir)
+		{
+			string toolsVersion = "15.0";
+			binDir = runtime.GetMSBuildBinPath (toolsVersion);
+			if (binDir == null) {
+				throw new Exception ("Did not find MSBuild for runtime " + runtime.Id);
+			}
+			return toolsVersion;
+		}
+
 		/// <summary>
 		/// Forces the reload of all project builders
 		/// </summary>
@@ -1009,13 +1017,10 @@ namespace MonoDevelop.Projects.MSBuild
 
 		internal static async Task<RemoteProjectBuilder> GetProjectBuilder (TargetRuntime runtime, string minToolsVersion, string file, string solutionFile, string sdksPath, int customId, bool lockBuilder = false)
 		{
-			if (!Version.TryParse (minToolsVersion, out Version mtv) || mtv > Version.Parse (ToolsVersion)) {
-				throw new InvalidOperationException ($"Project '{file}' requires unsupported ToolsVersion '{minToolsVersion}'");
-			}
+			string toolsVersion = GetNewestInstalledToolsVersion (runtime, out string binDir);
 
-			var binDir = runtime.GetMSBuildBinPath (ToolsVersion);
-			if (binDir == null) {
-				throw new InvalidOperationException ($"Runtime '{runtime.Id}' does not support ToolsVersion '{ToolsVersion}");
+			if (!Version.TryParse (minToolsVersion, out Version mtv) || mtv > Version.Parse (toolsVersion)) {
+				throw new InvalidOperationException ($"Project '{file}' requires unsupported ToolsVersion '{minToolsVersion}'");
 			}
 
 			using (await buildersLock.EnterAsync ())
@@ -1054,7 +1059,7 @@ namespace MonoDevelop.Projects.MSBuild
 						connection = new RemoteProcessConnection (exe, runtime.GetExecutionHandler ());
 						await connection.Connect ().ConfigureAwait (false);
 
-						var props = GetCoreGlobalProperties (solutionFile, binDir);
+						var props = GetCoreGlobalProperties (solutionFile, binDir, toolsVersion);
 						foreach (var gpp in globalPropertyProviders) {
 							foreach (var e in gpp.GetGlobalProperties ())
 								props [e.Key] = e.Value;
@@ -1092,7 +1097,7 @@ namespace MonoDevelop.Projects.MSBuild
 			}
 		}
 
-		static Dictionary<string,string> GetCoreGlobalProperties (string slnFile, string binDir)
+		static Dictionary<string,string> GetCoreGlobalProperties (string slnFile, string binDir, string toolsVersion)
 		{
 			var dictionary = new Dictionary<string,string> ();
 
@@ -1114,7 +1119,7 @@ namespace MonoDevelop.Projects.MSBuild
 
 			//when running the dev15 MSBuild from commandline or inside MSBuild, it sets "VSToolsPath" correctly. when running from MD, it falls back to a bad default. override it.
 			if (Platform.IsWindows) {
-				dictionary.Add ("VSToolsPath", Path.GetFullPath (Path.Combine (binDir, "..", "..", "Microsoft", "VisualStudio", "v" + ToolsVersion)));
+				dictionary.Add ("VSToolsPath", Path.GetFullPath (Path.Combine (binDir, "..", "..", "Microsoft", "VisualStudio", "v" + toolsVersion)));
 			}
 
 			return dictionary;
@@ -1122,11 +1127,11 @@ namespace MonoDevelop.Projects.MSBuild
 
 #region MSBuild exe file location
 
-		static string GetMSBuildExeLocationInBundle (TargetRuntime runtime)
+		static string GetMSBuildExeLocationInBundle (string toolsVersion)
 		{
 			// Locate the project builder exe in the MD directory
 			var builderDir = new FilePath (typeof(MSBuildProjectService).Assembly.Location).ParentDirectory.Combine ("MSBuild");
-			return builderDir.Combine ("dotnet." + ToolsVersion, "MonoDevelop.Projects.Formats.MSBuild.exe");
+			return builderDir.Combine ("dotnet." + toolsVersion, "MonoDevelop.Projects.Formats.MSBuild.exe");
 		}
 
 		/// <summary>
@@ -1141,14 +1146,15 @@ namespace MonoDevelop.Projects.MSBuild
 			// every time XS is started, removing unused builders. The process id is used
 			// as folder name, so it is easy to check if the folder is currently in use or not.
 
+			string toolsVersion = GetNewestInstalledToolsVersion (runtime, out string binDir);
+
 			var dirId = Process.GetCurrentProcess ().Id.ToString () + "_" + runtime.InternalId;
 			var exesDir = UserProfile.Current.CacheDir.Combine ("MSBuild").Combine (dirId);
-			var originalExe = GetMSBuildExeLocationInBundle (runtime);
+			var originalExe = GetMSBuildExeLocationInBundle (toolsVersion);
 			var originalExeConfig = originalExe + ".config";
 			var destinationExe = exesDir.Combine (Path.GetFileName (originalExe));
 			var destinationExeConfig = destinationExe + ".config";
 
-			string binDir = runtime.GetMSBuildBinPath (ToolsVersion);
 
 			if (Platform.IsWindows) {
 				// on Windows copy the official MSBuild.exe.config from the VS 2017 install

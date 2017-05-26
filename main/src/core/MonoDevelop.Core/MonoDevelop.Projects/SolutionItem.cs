@@ -379,7 +379,7 @@ namespace MonoDevelop.Projects
 		[Obsolete ("Use the overload that returns a Task")]
 		public IEnumerable<SolutionItem> GetReferencedItems (ConfigurationSelector configuration)
 		{
-			return ItemExtension.OnGetReferencedItems (configuration);
+			return GetReferencedItems (configuration, CancellationToken.None).Result;
 		}
 
 		[Obsolete("This is extension-specific functionality that should not be in core")]
@@ -409,7 +409,9 @@ namespace MonoDevelop.Projects
 
 		protected virtual Task<List<SolutionItem>> OnGetReferencedItems (ConfigurationSelector configuration, CancellationToken token)
 		{
-			return Task.FromResult (dependencies.ToList ());
+#pragma warning disable 618
+			return Task.FromResult (ItemExtension.OnGetReferencedItems (configuration).ToList ());
+#pragma warning restore 618
 		}
 
 		/// <summary>
