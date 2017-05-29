@@ -29,6 +29,7 @@ using Mono.Addins;
 namespace MonoDevelop.Ide.Codons
 {
 	[ExtensionNode (Description = "Template informations.")]
+	[ExtensionNodeChild (typeof (TemplateParameterExtensionNode), "Parameter")]
 	internal class TemplateExtensionNode : ExtensionNode
 	{
 		[NodeAttribute ("category", "Category used to place template into correct category inside new project dialog.")]
@@ -137,6 +138,27 @@ namespace MonoDevelop.Ide.Codons
 		public string Condition {
 			get {
 				return condition;
+			}
+		}
+	}
+
+	class TemplateParameterExtensionNode : ExtensionNode
+	{
+		[NodeAttribute ("name")]
+		string name;
+
+		public string Name {
+			get {
+				return name;
+			}
+		}
+
+		[NodeAttribute ("value")]
+		string value;
+
+		public string Value {
+			get {
+				return value;
 			}
 		}
 	}

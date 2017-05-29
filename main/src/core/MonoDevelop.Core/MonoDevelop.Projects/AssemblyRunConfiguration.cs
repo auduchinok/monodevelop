@@ -50,7 +50,7 @@ namespace MonoDevelop.Projects
 			StartAction = StartActions.Project;
 		}
 
-		[ItemProperty (DefaultValue = "")]
+		[ItemProperty (DefaultValue = StartActions.Project)]
 		public string StartAction { get; set; }
 
 		[ItemProperty (DefaultValue = "")]

@@ -155,20 +155,30 @@ namespace MonoDevelop.Ide.Templates
 				parameters,
 				true,
 				false,
-				null);
-			if (result.ResultInfo.PrimaryOutputs.Any ()) {
-				foreach (var res in result.ResultInfo.PrimaryOutputs) {
-					var fullPath = Path.Combine (config.ProjectLocation, res.Path);
-					//This happens if some project is excluded by modifiers, e.g. Test project disabled in wizard settings by user
-					if (!File.Exists (fullPath))
-						continue;
-					workspaceItems.Add (await MonoDevelop.Projects.Services.ProjectService.ReadSolutionItem (new Core.ProgressMonitor (), fullPath));
+				null
+			);
+
+			var filesToOpen = new List<string> ();
+			foreach (var postAction in result.ResultInfo.PostActions) {
+				switch (postAction.ActionId.ToString ().ToUpper ()) {
+				case "84C0DA21-51C8-4541-9940-6CA19AF04EE6":
+					if (postAction.Args.TryGetValue ("files", out var files))
+						foreach (var fi in files.Split (';'))
+							if (int.TryParse (fi.Trim (), out var i))
+								filesToOpen.Add (Path.Combine (config.ProjectLocation, result.ResultInfo.PrimaryOutputs [i].Path));
+					break;
+				case "D396686C-DE0E-4DE6-906D-291CD29FC5DE":
+					//TODO: Load project files
+					break;
 				}
-			} else {
-				//TODO: Remove this code once https://github.com/dotnet/templating/pull/342 is released in NuGet feed and we bump NuGet version of templating engine
-				foreach (var path in Directory.GetFiles (config.ProjectLocation, "*.*proj", SearchOption.AllDirectories)) {
-					if (path.EndsWith (".csproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith (".fsproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith (".vbproj", StringComparison.OrdinalIgnoreCase))
-						workspaceItems.Add (await MonoDevelop.Projects.Services.ProjectService.ReadSolutionItem (new Core.ProgressMonitor (), path));
+			}
+
+			//TODO: Once templates support "D396686C-DE0E-4DE6-906D-291CD29FC5DE" use that to load projects
+			foreach (var path in Directory.GetFiles (config.ProjectLocation, "*.*proj", SearchOption.AllDirectories)) {
+				if (path.EndsWith (".csproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith (".fsproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith (".vbproj", StringComparison.OrdinalIgnoreCase)) {
+					var solutionItem = await MonoDevelop.Projects.Services.ProjectService.ReadSolutionItem (new Core.ProgressMonitor (), path);
+					//solutionItem.InitializeFromTemplate (new ProjectCreateInformation (), settingsXml);
+					workspaceItems.Add (solutionItem);
 				}
 			}
 
@@ -209,7 +219,7 @@ namespace MonoDevelop.Ide.Templates
 				foreach (var file in p.Files)
 					await FormatFile (p, file.FilePath);
 			}
-
+			processResult.SetFilesToOpen (filesToOpen);
 			return processResult;
 		}
 
@@ -220,6 +230,11 @@ namespace MonoDevelop.Ide.Templates
 				foreach (TemplateParameter parameter in GetValidParameters (template.DefaultParameters)) {
 					parameters [parameter.Name] = parameter.Value;
 				}
+			}
+
+			// Parameters set inside ExtensionNode xml node
+			foreach(var parameter in template.Parameters){
+				parameters [parameter.Key] = parameter.Value;
 			}
 
 			// If the template has no wizard then no extra parameters will be set.

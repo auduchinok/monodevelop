@@ -28,13 +28,15 @@ using Microsoft.TemplateEngine.Abstractions;
 using Microsoft.TemplateEngine.Edge.Settings;
 using System.Linq;
 using MonoDevelop.Ide.Codons;
+using System.Collections.Generic;
 
 namespace MonoDevelop.Ide.Templates
 {
 	class MicrosoftTemplateEngineSolutionTemplate : SolutionTemplate
 	{
 		internal readonly ITemplateInfo templateInfo;
-		//TemplateExtensionNode template;
+
+		public Dictionary<string, string> Parameters;
 
 		internal MicrosoftTemplateEngineSolutionTemplate (TemplateExtensionNode template, ITemplateInfo templateInfo)
 			: base (template.Id, template.OverrideName ?? templateInfo.Name, template.Icon)
@@ -59,6 +61,7 @@ namespace MonoDevelop.Ide.Templates
 			//Visibility = GetVisibility (template.Visibility);
 
 			//HasProjects = (template.SolutionDescriptor.EntryDescriptors.Length > 0);
+			Parameters = template.ChildNodes.OfType<TemplateParameterExtensionNode> ().ToDictionary (p => p.Name, p => p.Value);
 		}
 	}
 }
